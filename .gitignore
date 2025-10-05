@@ -1,8 +1,23 @@
-__pycache__/
-config.toml
-*.pyc
+# --- System & Virtual Environments ---
+# Python virtual environment
+/venv/
+/env/
+/.venv/
+
+# Python cache files
+**/__pycache__/
+**/*.pyc
+
+# --- Configuration Files (User Specific) ---
+# Main user configuration, should not be versioned
+/config.toml
+# UI configuration file
+/.config_UI.json
+
+# --- Temporary & Build Files ---
+# Zip archives
+*.zip
+
+# --- Other ---
+# A test directory that should be ignored
 test-but-napcat-on-lunix
-venv
-mongodb.zip
-.config_UI.json
-utils/__pycache__/
