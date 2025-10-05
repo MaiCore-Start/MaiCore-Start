@@ -273,6 +273,7 @@ class _MongoDbComponent(_LaunchComponent):
 
 
 class _NapCatComponent(_LaunchComponent):
+    """NapCat组件，通过自动检测支持OneKey和Shell版本。"""
     def __init__(self, config: Dict[str, Any]):
         super().__init__("NapCat", config)
         self.check_enabled()
@@ -280,67 +281,76 @@ class _NapCatComponent(_LaunchComponent):
     def check_enabled(self):
         self.is_enabled = self.config.get("install_options", {}).get("install_napcat", False)
 
+    def _is_shell_version(self) -> bool:
+        """通过检测特征启动脚本文件来判断是否为NapCat.Shell版本。"""
+        napcat_path = self.config.get("napcat_path", "")
+        if not napcat_path:
+            return False
+        
+        napcat_dir = os.path.dirname(napcat_path)
+        if not os.path.isdir(napcat_dir):
+            return False
+            
+        shell_scripts = [
+            "launcher.bat", "launcher-user.bat",
+            "launcher-win10.bat", "launcher-win10-user.bat"
+        ]
+        
+        return any(os.path.exists(os.path.join(napcat_dir, script)) for script in shell_scripts)
+
     def get_launch_details(self) -> Optional[Tuple[str, str, str]]:
+        """
+        获取OneKey版本的启动详情。
+        Shell版本有独立的启动逻辑，不使用此方法。
+        """
         napcat_path = self.config.get("napcat_path", "")
         if not (napcat_path and os.path.exists(napcat_path) and napcat_path.lower().endswith('.exe')):
             logger.error("NapCat路径无效", path=napcat_path)
             return None
         
-        # 获取NapCat版本
-        napcat_version = self.config.get("napcat_version", "")
-        
-        # 检查是否有QQ号配置
-        qq_account = self.config.get("qq_account")
-        
-        # 根据NapCat版本确定启动命令
-        if napcat_version == "NapCat.Shell":
-            # NapCat.Shell版本的启动方式
-            # 获取NapCat根目录
-            napcat_dir = os.path.dirname(napcat_path)
-            
-            # 检测操作系统版本
-            import platform
-            is_win10 = platform.release() == "10"
-            
-            # 确定启动脚本名称
-            if is_win10:
-                preferred_script = "launcher-win10-user.bat"
-                fallback_script = "launcher-win10.bat"
-            else:
-                preferred_script = "launcher-user.bat"
-                fallback_script = "launcher.bat"
-            
-            # 检查首选脚本是否存在
-            preferred_script_path = os.path.join(napcat_dir, preferred_script)
-            if os.path.exists(preferred_script_path):
-                command = f'"{preferred_script_path}"'
-                if qq_account:
-                    command += f" {qq_account}"
-                cwd = napcat_dir
-                title = f"NapCatQQ - {self.config.get('version_path', 'N/A')} (Shell)"
-                return command, cwd, title
-            
-            # 检查备选脚本是否存在
-            fallback_script_path = os.path.join(napcat_dir, fallback_script)
-            if os.path.exists(fallback_script_path):
-                command = f'"{fallback_script_path}"'
-                if qq_account:
-                    command += f" {qq_account}"
-                cwd = napcat_dir
-                title = f"NapCatQQ - {self.config.get('version_path', 'N/A')} (Shell)"
-                return command, cwd, title
-            
-            # 如果都没有找到，返回None
-            logger.error("未找到NapCat.Shell启动脚本", preferred=preferred_script_path, fallback=fallback_script_path)
+        # 如果是Shell版本，则此方法不适用
+        if self._is_shell_version():
             return None
+            
+        # OneKey版本的启动命令
+        command = f'"{napcat_path}"'
+        if qq_account := self.config.get("qq_account"):
+            command += f" {qq_account}"
+        cwd = os.path.dirname(napcat_path)
+        title = f"NapCatQQ - {self.config.get('version_path', 'N/A')}"
+        return command, cwd, title
+
+    def _try_launch_shell_script(
+        self, script_path: str, napcat_dir: str, process_manager: _ProcessManager, qq_account: Optional[str] = None
+    ) -> Optional[bool]:
+        """
+        尝试启动单个NapCat.Shell脚本，并与用户确认结果。
+        """
+        if not os.path.exists(script_path):
+            logger.warning("NapCat.Shell 启动脚本不存在", path=script_path)
+            return None
+
+        script_name = os.path.basename(script_path)
+        command = f'"{script_name}"'
+        if qq_account:
+            command += f" {qq_account}"
+        
+        title = f"NapCatQQ - {self.config.get('version_path', 'N/A')} (Shell)"
+        
+        process = process_manager.start_in_new_cmd(command, napcat_dir, title)
+        if not process:
+            return False
+
+        time.sleep(3)
+
+        ui.print_warning("NapCat可能启动失败，这应该不是您或我们的问题，我们可以换一种方式启动...")
+        if ui.confirm("您的NapCat启动成功了吗？"):
+            return True
         else:
-            # 默认启动方式（OneKey版本）
-            command = f'"{napcat_path}"'
-            if qq_account:
-                command += f" {qq_account}"
-            cwd = os.path.dirname(napcat_path)
-            title = f"NapCatQQ - {self.config.get('version_path', 'N/A')}"
-            return command, cwd, title
+            ui.print_info(f"正在停止可能失败的 NapCat 进程 (PID: {process.pid})...")
+            process_manager.stop_process(process.pid)
+            time.sleep(1)
+            return False
 
     def start(self, process_manager: _ProcessManager) -> bool:
         if not self.is_enabled:
@@ -351,75 +361,55 @@ class _NapCatComponent(_LaunchComponent):
             logger.info("NapCat已经在运行")
             return True
             
-        # 获取NapCat版本
-        napcat_version = self.config.get("napcat_version", "")
-        
-        # 如果是NapCat.Shell版本，需要特殊处理
-        if napcat_version == "NapCat.Shell":
-            napcat_path = self.config.get("napcat_path", "")
-            napcat_dir = os.path.dirname(napcat_path)
-            
-            # 检测操作系统版本
-            import platform
-            is_win10 = platform.release() == "10"
-            
-            # 确定启动脚本名称
-            if is_win10:
-                preferred_script = "launcher-win10-user.bat"
-                fallback_script = "launcher-win10.bat"
-            else:
-                preferred_script = "launcher-user.bat"
-                fallback_script = "launcher.bat"
-            
-            # 尝试启动首选脚本
-            ui.print_info("尝试启动 NapCat (Shell)...")
-            preferred_script_path = os.path.join(napcat_dir, preferred_script)
-            if os.path.exists(preferred_script_path):
-                command = f'"{preferred_script_path}"'
-                qq_account = self.config.get("qq_account")
-                if qq_account:
-                    command += f" {qq_account}"
-                
-                process = process_manager.start_in_new_cmd(command, napcat_dir, f"NapCatQQ - {self.config.get('version_path', 'N/A')} (Shell)")
-                if process:
-                    time.sleep(3)  # 等待NapCat启动
-                    # 询问用户是否启动成功
-                    ui.print_warning("NapCat可能启动失败，这应该不是您或我们的问题，我们可以换一种方式启动...")
-                    if ui.confirm("您的NapCat启动成功了吗？"):
-                        return True
-                    else:
-                        # 尝试启动备选脚本
-                        ui.print_info("尝试使用备选启动脚本...")
-                        fallback_script_path = os.path.join(napcat_dir, fallback_script)
-                        if os.path.exists(fallback_script_path):
-                            command = f'"{fallback_script_path}"'
-                            if qq_account:
-                                command += f" {qq_account}"
-                            process = process_manager.start_in_new_cmd(command, napcat_dir, f"NapCatQQ - {self.config.get('version_path', 'N/A')} (Shell)")
-                            if process:
-                                time.sleep(3)  # 等待NapCat启动
-                                return True
-            else:
-                # 首选脚本不存在，直接尝试备选脚本
-                fallback_script_path = os.path.join(napcat_dir, fallback_script)
-                if os.path.exists(fallback_script_path):
-                    ui.print_info("尝试启动 NapCat (Shell)...")
-                    command = f'"{fallback_script_path}"'
-                    qq_account = self.config.get("qq_account")
-                    if qq_account:
-                        command += f" {qq_account}"
-                    process = process_manager.start_in_new_cmd(command, napcat_dir, f"NapCatQQ - {self.config.get('version_path', 'N/A')} (Shell)")
-                    if process:
-                        time.sleep(3)  # 等待NapCat启动
-                        return True
-            return False
-        else:
-            # 默认启动方式（OneKey版本）
-            ui.print_info("尝试启动 NapCat...")
+        if not self._is_shell_version():
+            # OneKey版本的默认启动方式
+            ui.print_info("检测到 NapCat (OneKey) 版本，正在尝试启动...")
             if super().start(process_manager):
-                time.sleep(3)  # 等待NapCat启动
+                time.sleep(3)
                 return True
             return False
+
+        # --- NapCat.Shell版本的特殊启动逻辑 ---
+        ui.print_info("检测到 NapCat (Shell) 版本，正在尝试启动...")
+        napcat_path = self.config.get("napcat_path", "")
+        if not napcat_path or not os.path.exists(os.path.dirname(napcat_path)):
+            ui.print_error(f"NapCat路径配置错误或目录不存在: {napcat_path}")
+            return False
+            
+        napcat_dir = os.path.dirname(napcat_path)
+        
+        import platform
+        is_win10 = platform.release() == "10"
+        
+        preferred_script, fallback_script = (
+            ("launcher-win10-user.bat", "launcher-win10.bat") if is_win10
+            else ("launcher-user.bat", "launcher.bat")
+        )
+
+        qq_for_login = None
+        if ui.confirm("是否为 NapCat.Shell 启用快速登录？"):
+            qq_for_login = self.config.get("qq_account")
+            if qq_for_login:
+                ui.print_info(f"将使用QQ号 {qq_for_login} 进行快速登录。")
+            else:
+                ui.print_warning("配置中未找到有效的QQ号 (qq_account)，将不使用快速登录。")
+
+        preferred_path = os.path.join(napcat_dir, preferred_script)
+        fallback_path = os.path.join(napcat_dir, fallback_script)
+
+        ui.print_info(f"步骤 1/2: 尝试使用首选脚本 '{preferred_script}'")
+        result = self._try_launch_shell_script(preferred_path, napcat_dir, process_manager, qq_for_login)
+
+        if result is True:
+            return True
+
+        if result is False or result is None:
+            ui.print_info(f"步骤 2/2: 尝试使用备用脚本 '{fallback_script}'")
+            if self._try_launch_shell_script(fallback_path, napcat_dir, process_manager, qq_for_login):
+                return True
+
+        ui.print_error("所有 NapCat (Shell) 启动方式均已尝试失败。")
+        return False
 
 
 class _AdapterComponent(_LaunchComponent):
@@ -548,6 +538,7 @@ class MaiLauncher:
         self._process_manager = _ProcessManager()
         self._components: Dict[str, _LaunchComponent] = {}
         self._config: Optional[Dict[str, Any]] = None
+        self._process_cache: Dict[int, psutil.Process] = {}
 
     @staticmethod
     def _get_python_command(config: Dict[str, Any], cwd: str) -> str:
@@ -780,11 +771,18 @@ class MaiLauncher:
         """重启单个托管进程。"""
         return self._process_manager.restart_process(pid)
 
+    def get_managed_pids(self) -> List[int]:
+        """获取所有当前受管进程的PID列表。"""
+        # 添加启动器自身的PID
+        pids = [os.getpid()]
+        # 添加所有由_process_manager管理的子进程PID
+        pids.extend([info["process"].pid for info in self._process_manager.running_processes if info.get("process") and info["process"].poll() is None])
+        return pids
+
     def show_running_processes(self):
-        """以表格形式显示当前正在运行的进程状态。"""
+        """以表格形式显示当前正在运行的进程状态，并使用缓存计算CPU。"""
         managed_procs_info = self._process_manager.get_running_processes_info()
         
-        # --- 构建表格 ---
         table = Table(title="[📊 进程状态管理]", show_header=True, header_style="bold magenta")
         table.add_column("PID", style="dim", width=8)
         table.add_column("进程名称", style="cyan", no_wrap=True)
@@ -792,7 +790,14 @@ class MaiLauncher:
         table.add_column("内存 (MB)", style="yellow", justify="right")
         table.add_column("运行时间 (s)", style="blue", justify="right")
 
-        # --- 统一处理所有进程 ---
+        current_pids = {info["process"].pid for info in managed_procs_info}
+        current_pids.add(os.getpid())
+
+        # 清理已结束进程的缓存
+        for pid in list(self._process_cache.keys()):
+            if pid not in current_pids:
+                del self._process_cache[pid]
+        
         all_process_meta = [{"pid": os.getpid(), "title": "麦麦启动器 (主程序)"}]
         for info in managed_procs_info:
             all_process_meta.append({"pid": info["process"].pid, "title": info["title"], "start_time": info["start_time"]})
@@ -804,9 +809,15 @@ class MaiLauncher:
         for meta in all_process_meta:
             pid = meta["pid"]
             try:
-                p = psutil.Process(pid)
-                # 为每个进程独立计算CPU占用率，间隔0.1秒
-                cpu_percent = p.cpu_percent(interval=0.1)
+                p = self._process_cache.get(pid)
+                if p is None:
+                    p = psutil.Process(pid)
+                    p.cpu_percent()  # 第一次调用返回0，但会初始化计时器
+                    self._process_cache[pid] = p
+                    cpu_percent = 0.0
+                else:
+                    cpu_percent = p.cpu_percent() # 后续调用将返回有意义的值
+                
                 memory_mb = p.memory_info().rss / (1024 * 1024)
                 running_time = time.time() - (meta.get("start_time") or p.create_time())
 
@@ -819,25 +830,21 @@ class MaiLauncher:
                 )
             except (psutil.NoSuchProcess, Exception) as e:
                 logger.warning("获取进程信息失败", pid=pid, error=str(e))
+                if pid in self._process_cache:
+                    del self._process_cache[pid]
         
         return table
 
     def get_process_details(self, pid: int) -> Optional[Dict[str, Any]]:
-        """获取单个进程的详细信息。"""
+        """获取单个进程的详细信息（不包括冲突的CPU数据）。"""
         try:
             p = psutil.Process(pid)
-            
-            # 查找是否为托管进程以获取额外信息
             managed_info = next((info for info in self._process_manager.running_processes if info.get("process") and info["process"].pid == pid), None)
             
-            # 使用一个小的阻塞间隔来获取有意义的CPU值
-            cpu_percent = p.cpu_percent(interval=0.1)
-
             details = {
                 "PID": p.pid,
                 "名称": p.name(),
                 "状态": p.status(),
-                "CPU %": f"{cpu_percent:.2f}",
                 "内存 (MB)": f"{p.memory_info().rss / (1024 * 1024):.2f}",
                 "启动时间": datetime.fromtimestamp(p.create_time()).strftime("%Y-%m-%d %H:%M:%S"),
                 "命令行": " ".join(p.cmdline()),

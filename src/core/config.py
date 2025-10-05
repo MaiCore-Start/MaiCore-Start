@@ -149,9 +149,13 @@ class Config:
         # 获取所有配置项，保持原始顺序
         config_items = list(configurations.items())
 
-        # 检查是否存在问题（重复或不连续）
-        serials = [cfg.get("absolute_serial_number") for _, cfg in config_items]
-        is_problematic = len(serials) != len(set(serials)) or sorted(serials) != list(range(1, len(serials) + 1))
+        # 检查是否存在问题（重复或不连续），并确保类型为整数
+        try:
+            serials = [int(cfg.get("absolute_serial_number")) for _, cfg in config_items]
+            is_problematic = len(serials) != len(set(serials)) or sorted(serials) != list(range(1, len(serials) + 1))
+        except (ValueError, TypeError):
+            # 如果转换失败或存在None，则认为有问题，需要修复
+            is_problematic = True
 
         if is_problematic:
             logger.warning("检测到绝对序列号存在问题，开始修复...")

@@ -1225,7 +1225,7 @@ pause
             
             # 定义bot_path_key以传递给后续函数
             bot_type = deploy_config.get("bot_type", "MaiBot")
-            bot_path_key = "maibot_path" if bot_type == "MaiBot" else "mofox_path"
+            bot_path_key = "mai_path" if bot_type == "MaiBot" else "mofox_path"
             self._show_post_deployment_info(paths.get(bot_path_key, ""), deploy_config)
 
             logger.info("实例部署完成", serial=deploy_config['serial_number'])
@@ -1744,7 +1744,7 @@ pause
         """等待NapCat安装完成并检测路径"""
         ui.print_info("等待NapCat安装完成...")
         ui.print_warning("请在弹出的安装窗口中完成NapCat安装")
-        ui.print_info("安装完成后，按回车键开始检测NapCat路径")
+        ui.print_info("安装完成后，按回车键开始检测NapCat路径(若您安装的是基础版[NapCat.Shell]，则可以直接回车检测，不必等待安装完成)")
         
         # 等待用户确认安装完成
         ui.pause("NapCat安装完成后按回车继续...")
@@ -1809,7 +1809,7 @@ pause
     def _setup_config_files(self, deploy_config: Dict, **paths: str) -> bool:
         """第六步：配置文件设置"""
         bot_type = deploy_config.get("bot_type", "MaiBot")
-        bot_path_key = "maibot_path" if bot_type == "MaiBot" else "mofox_path"
+        bot_path_key = "mai_path" if bot_type == "MaiBot" else "mofox_path"
         bot_path = paths.get(bot_path_key, "")
         
         ui.console.print("\n[⚙️ 第六步：配置文件设置]", style=ui.colors["primary"])
@@ -1823,143 +1823,134 @@ pause
         from ..utils.version_detector import compare_versions
 
         try:
-            # 创建config目录
+            # 准备路径
             config_dir = os.path.join(bot_path, "config")
+            template_dir = os.path.join(bot_path, "template")
             adapter_config_dir = os.path.join(bot_path, "adapter") if adapter_path and adapter_path != "无需适配器" else None
-            os.makedirs(config_dir, exist_ok=True)
-            ui.print_info(f"创建config目录: {config_dir}")
             
             # 1. 处理Bot主程序配置文件
             ui.print_info(f"正在设置{bot_type}配置文件...")
             
-            # 复制bot_config_template.toml到config目录并重命名
-            template_dir = os.path.join(bot_path, "template")
-            bot_config_template = os.path.join(template_dir, "bot_config_template.toml")
-            bot_config_target = os.path.join(config_dir, "bot_config.toml")
+            # --- 严格按照版本逻辑处理配置文件 ---
             
-            if os.path.exists(bot_config_template):
-                shutil.copy2(bot_config_template, bot_config_target)
-                ui.print_success(f"✅ bot_config.toml 配置完成")
-                logger.info("bot_config.toml复制成功", source=bot_config_template, target=bot_config_target)
-            else:
-                ui.print_warning(f"⚠️ 未找到模板文件: {bot_config_template}")
-                logger.warning("bot_config模板文件不存在", path=bot_config_template)
-            
-            # 对于MoFox_bot，还需要复制model_config_template.toml
-            if bot_type == "MoFox_bot":
+            # Case: MaiBot >= 0.10.0 (按用户详细要求)
+            if bot_type == "MaiBot" and compare_versions(version_name, "0.10.0") >= 0:
+                os.makedirs(config_dir, exist_ok=True)
+                ui.print_info(f"为 MaiBot >= 0.10.0 创建标准配置文件...")
+
+                # 复制 bot_config_template.toml
+                bot_config_template = os.path.join(template_dir, "bot_config_template.toml")
+                bot_config_target = os.path.join(config_dir, "bot_config.toml")
+                if os.path.exists(bot_config_template):
+                    shutil.copy2(bot_config_template, bot_config_target)
+                    ui.print_success(f"✅ bot_config.toml 配置完成")
+                else:
+                    ui.print_warning(f"⚠️ 未找到模板: {bot_config_template}")
+
+                # 复制 model_config_template.toml
                 model_config_template = os.path.join(template_dir, "model_config_template.toml")
                 model_config_target = os.path.join(config_dir, "model_config.toml")
-                
                 if os.path.exists(model_config_template):
                     shutil.copy2(model_config_template, model_config_target)
                     ui.print_success(f"✅ model_config.toml 配置完成")
-                    logger.info("model_config.toml复制成功", source=model_config_template, target=model_config_target)
                 else:
-                    ui.print_warning(f"⚠️ 未找到模板文件: {model_config_template}")
-                    logger.warning("model_config模板文件不存在", path=model_config_template)
-
-            # 新增逻辑：处理lpmm_config_template.toml
-            if bot_type == "MaiBot" and \
-               compare_versions(version_name, "0.6.3") >= 0 and \
-               compare_versions(version_name, "0.10.0") < 0:
-                lpmm_template = os.path.join(template_dir, "lpmm_config_template.toml")
-                lpmm_target = os.path.join(config_dir, "lpmm_config.toml")
-                if os.path.exists(lpmm_template):
-                    shutil.copy2(lpmm_template, lpmm_target)
-                    ui.print_success(f"✅ lpmm_config.toml 配置完成 (适配版本 {version_name})")
-                    logger.info("lpmm_config.toml复制成功", source=lpmm_template, target=lpmm_target)
+                    ui.print_warning(f"⚠️ 未找到模板: {model_config_template}")
+                
+                # 复制 plugin_config_template.toml (对0.10.0+同样重要)
+                plugin_template = os.path.join(template_dir, "plugin_config_template.toml")
+                plugin_target = os.path.join(config_dir, "plugin_config.toml")
+                if os.path.exists(plugin_template):
+                    shutil.copy2(plugin_template, plugin_target)
+                    ui.print_success(f"✅ plugin_config.toml 配置完成")
                 else:
-                    ui.print_warning(f"⚠️ 未找到 lpmm_config_template.toml，跳过")
+                    ui.print_warning(f"⚠️ 未找到模板: plugin_config_template.toml")
             
-            # 复制template.env到根目录并重命名为.env
+            # Case: 其他所有情况 (旧版MaiBot, MoFox_bot)
+            else:
+                os.makedirs(config_dir, exist_ok=True)
+                ui.print_info(f"为 {bot_type} v{version_name} 创建标准配置文件...")
+                
+                # 复制 bot_config_template.toml (通用)
+                bot_config_template = os.path.join(template_dir, "bot_config_template.toml")
+                bot_config_target = os.path.join(config_dir, "bot_config.toml")
+                if os.path.exists(bot_config_template):
+                    shutil.copy2(bot_config_template, bot_config_target)
+                    ui.print_success(f"✅ bot_config.toml 配置完成")
+                else:
+                    ui.print_warning(f"⚠️ 未找到模板: {bot_config_template}")
+
+                # MoFox_bot 特有的 model_config.toml
+                if bot_type == "MoFox_bot":
+                    model_config_template = os.path.join(template_dir, "model_config_template.toml")
+                    model_config_target = os.path.join(config_dir, "model_config.toml")
+                    if os.path.exists(model_config_template):
+                        shutil.copy2(model_config_template, model_config_target)
+                        ui.print_success(f"✅ model_config.toml 配置完成")
+                    else:
+                        ui.print_warning(f"⚠️ 未找到模板: {model_config_template}")
+
+                # 特定旧版 MaiBot 的 lpmm_config.toml
+                if bot_type == "MaiBot" and compare_versions(version_name, "0.6.3") >= 0 and compare_versions(version_name, "0.10.0") < 0:
+                    lpmm_template = os.path.join(template_dir, "lpmm_config_template.toml")
+                    lpmm_target = os.path.join(config_dir, "lpmm_config.toml")
+                    if os.path.exists(lpmm_template):
+                        shutil.copy2(lpmm_template, lpmm_target)
+                        ui.print_success(f"✅ lpmm_config.toml 配置完成")
+                    else:
+                        ui.print_warning(f"⚠️ 未找到模板: lpmm_config_template.toml")
+
+            # 复制 template.env (所有版本都需要)
             env_template = os.path.join(template_dir, "template.env")
             env_target = os.path.join(bot_path, ".env")
-            
             if os.path.exists(env_template):
                 shutil.copy2(env_template, env_target)
-                
-                # 修改.env文件中的PORT为8000
                 try:
-                    with open(env_target, 'r', encoding='utf-8') as f:
-                        env_content = f.read()
-                    
-                    # 修改PORT配置
-                    if 'PORT=' in env_content:
-                        env_content = re.sub(r'PORT=\d+', 'PORT=8000', env_content)
-                    else:
-                        # 如果没有PORT配置，添加一个
-                        env_content += '\nPORT=8000\n'
-                    
-                    with open(env_target, 'w', encoding='utf-8') as f:
-                        f.write(env_content)
-                    
+                    with open(env_target, 'r+', encoding='utf-8') as f:
+                        content = f.read()
+                        content = re.sub(r'PORT=\d+', 'PORT=8000', content) if 'PORT=' in content else content + '\nPORT=8000\n'
+                        f.seek(0)
+                        f.write(content)
+                        f.truncate()
                     ui.print_success(f"✅ .env 配置完成 (PORT=8000)")
-                    logger.info(".env文件配置成功", target=env_target)
-                    
                 except Exception as e:
-                    ui.print_warning(f"⚠️ .env文件PORT修改失败: {str(e)}")
-                    logger.warning(".env文件修改失败", error=str(e))
-                    
+                    ui.print_warning(f"⚠️ .env 文件PORT修改失败: {str(e)}")
             else:
                 ui.print_warning(f"⚠️ 未找到环境变量模板文件: {env_template}")
-                logger.warning("env模板文件不存在", path=env_template)
-            
-            # 2. 处理适配器配置文件
+
+            # 2. 处理适配器配置文件 (逻辑不变)
             if adapter_path and adapter_path != "无需适配器" and not ("失败" in adapter_path or "版本较低" in adapter_path):
                 ui.print_info("正在设置适配器配置文件...")
-                
-                # 检查适配器目录中的配置文件
-                adapter_config_files = []
                 adapter_template_dir = os.path.join(adapter_path, "template")
-                
-                if os.path.exists(adapter_template_dir):
-                    # 查找适配器模板文件
+                if os.path.exists(adapter_template_dir) and adapter_config_dir:
                     for file in os.listdir(adapter_template_dir):
-                        if file.endswith('.toml') or file.endswith('.json') or file.endswith('.yaml'):
-                            adapter_config_files.append(file)
-                
-                if adapter_config_files:
-                    for config_file in adapter_config_files:
-                        source_file = os.path.join(adapter_template_dir, config_file)
-                        
-                        # 确定目标文件名（移除template前缀）
-                        target_filename = config_file.replace('template_', '').replace('_template', '')
-                        if target_filename.startswith('template.'):
-                            target_filename = target_filename[9:]  # 移除 'template.'
-                        
-                        if adapter_config_dir:
+                         if file.endswith(('.toml', '.json', '.yaml')):
+                            source_file = os.path.join(adapter_template_dir, file)
+                            target_filename = file.replace('template_', '').replace('_template', '')
                             target_file = os.path.join(adapter_config_dir, target_filename)
-                            
                             try:
                                 shutil.copy2(source_file, target_file)
                                 ui.print_success(f"✅ 适配器配置文件: {target_filename}")
-                                logger.info("适配器配置文件复制成功", source=source_file, target=target_file)
                             except Exception as e:
-                                ui.print_warning(f"⚠️ 适配器配置文件复制失败: {config_file} - {str(e)}")
-                                logger.warning("适配器配置文件复制失败", error=str(e), file=config_file)
+                                ui.print_warning(f"⚠️ 适配器配置文件复制失败: {file} - {str(e)}")
                 else:
                     ui.print_info("适配器无需额外配置文件")
-            
-            # 3. 创建NapCat相关配置提示
+
+            # 3. 创建NapCat相关配置提示 (逻辑不变)
             if napcat_path:
                 ui.print_info("NapCat配置提醒:")
                 ui.console.print("  • 请参考 https://docs.mai-mai.org/manual/adapters/napcat.html")
-                ui.console.print("  • 配置QQ登录信息")
-                ui.console.print("  • 设置WebSocket连接参数")
-            
-            # 4. MongoDB配置提示
+
+            # 4. MongoDB配置提示 (逻辑不变)
             if mongodb_path:
                 ui.print_info("MongoDB配置完成:")
                 ui.console.print(f"  • MongoDB路径: {mongodb_path}")
-                ui.console.print("  • 如需修改数据库配置，请编辑相关配置文件")
             
-            # 5. WebUI配置提示
+            # 5. WebUI配置提示 (逻辑不变)
             if webui_path:
                 ui.print_info("WebUI配置完成:")
                 ui.console.print(f"  • WebUI路径: {webui_path}")
             
             ui.print_success("✅ 配置文件设置完成")
-            logger.info("配置文件设置完成", bot_path=bot_path)
             return True
             
         except Exception as e:

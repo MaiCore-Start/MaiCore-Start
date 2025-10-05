@@ -687,6 +687,11 @@ class ConfigManager:
             model_config = os.path.join(bot_path, "config", "model_config.toml")
             if os.path.exists(model_config):
                 files_to_open.append(model_config)
+
+            # 为 0.10.0+ 添加 plugin_config.toml
+            plugin_config = os.path.join(bot_path, "config", "plugin_config.toml")
+            if os.path.exists(plugin_config):
+                files_to_open.append(plugin_config)
         else:
             env_file = os.path.join(bot_path, ".env")
             if os.path.exists(env_file):

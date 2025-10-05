@@ -158,6 +158,10 @@ class MaiMaiLauncher:
                     else:
                         ui.print_success("配置验证通过")
                     ui.pause()
+                elif choice == "G":
+                    # 打开配置文件
+                    config_mgr.open_config_files(config)
+                    ui.pause()
             
             elif choice == "C":
                 # 可视化编辑配置，直接在新窗口中运行 run_with_ui_port.py
@@ -192,12 +196,6 @@ class MaiMaiLauncher:
                 if serial_input:
                     serials = [s.strip() for s in serial_input.split(',')]
                     config_mgr.delete_configurations(serials)
-                    ui.pause()
-            elif choice == "G":
-                # 打开配置文件
-                config = config_mgr.select_configuration()
-                if config:
-                    config_mgr.open_config_files(config)
                     ui.pause()
     
     def handle_knowledge_menu(self):
@@ -321,7 +319,7 @@ class MaiMaiLauncher:
         ui.pause()
 
     def handle_process_status(self):
-        """处理进程状态查看，支持自动刷新和交互式命令。"""
+        """处理进程状态查看，支持自动刷新和交互式命令（最终优化版）。"""
         import msvcrt
         from rich.live import Live
         from rich.panel import Panel
@@ -329,87 +327,106 @@ class MaiMaiLauncher:
         from rich.layout import Layout
         from rich.table import Table
 
-        while True:
-            input_buffer = ""
-            last_refresh = 0
-            process_table = Table()
-            status_message = Text()
-            message_timestamp = 0
-            
-            COMMANDS = ["stop", "restart", "details", "stopall", "quit", "q"]
+        should_quit_monitor = False
+        while not should_quit_monitor:
             command_result = None
+            # 每次处理完一个命令（如查看详情）后，重新创建一个Live实例
+            with Live(auto_refresh=False, screen=True, transient=True) as live:
+                input_buffer = ""
+                last_data_refresh = 0
+                last_ui_refresh = 0
+                COMMANDS = ["stop", "restart", "details", "stopall", "quit", "q"]
+                # 初始数据获取
+                process_table = launcher.show_running_processes()
 
-            try:
-                with Live(auto_refresh=False, screen=True, transient=True) as live:
-                    should_exit_live = False
-                    while not should_exit_live:
-                        now = time.time()
-                        input_changed = False
-
+                while True: # Live 渲染循环
+                    now = time.time()
+                    
+                    # --- 1. 处理输入 (非阻塞) ---
+                    input_changed = False
+                    if msvcrt.kbhit():
                         while msvcrt.kbhit():
                             char = msvcrt.getwch()
-                            if char in ('\r', '\n'):
-                                command_to_run = input_buffer.strip()
-                                input_buffer = ""
-                                command_result = self._handle_process_command(command_to_run)
-                                if command_result:
-                                    should_exit_live = True
-                                    break
-                            elif char == '\x08':
-                                input_buffer = input_buffer[:-1]
-                            else:
-                                input_buffer += char
-                            input_changed = True
+                        input_changed = True
                         
-                        if should_exit_live: continue
+                        if char == '\r':  # Enter
+                            command_result = self._handle_process_command(input_buffer.strip())
+                            if command_result:
+                                break
+                            input_buffer = ""
+                        elif char == '\t':  # Tab
+                            parts = input_buffer.split(" ", 1)
+                            # 场景1: 补全指令
+                            if len(parts) == 1:
+                                suggestion = next((cmd for cmd in COMMANDS if cmd.startswith(parts[0].lower()) and parts[0]), None)
+                                if suggestion:
+                                    input_buffer = suggestion + " " if suggestion in ["stop", "restart", "details"] else suggestion
+                            # 场景2: 补全PID
+                            elif len(parts) == 2 and parts[0] in ["stop", "restart", "details"]:
+                                pid_prefix = parts[1]
+                                if pid_prefix.isdigit() or pid_prefix == "":
+                                    all_pids = launcher.get_managed_pids()
+                                    matching_pid = next((str(p) for p in all_pids if str(p).startswith(pid_prefix)), None)
+                                    if matching_pid:
+                                        input_buffer = f"{parts[0]} {matching_pid}"
 
-                        data_changed = False
-                        if now - last_refresh > 2:
-                            process_table = launcher.show_running_processes()
-                            last_refresh = now
-                            data_changed = True
+                        elif char == '\x08':  # Backspace
+                            input_buffer = input_buffer[:-1]
+                        elif char not in ('\x00', '\xe0'):  # 忽略功能键
+                            input_buffer += char
+                    
+                    if command_result:
+                        break
+
+                    # --- 2. 刷新进程数据 (定时) ---
+                    data_changed = False
+                    if now - last_data_refresh > 2.0:
+                        last_data_refresh = now
+                        process_table = launcher.show_running_processes()
+                        data_changed = True
+
+                    # --- 3. 刷新UI (按需) ---
+                    if input_changed or data_changed or (now - last_ui_refresh > 0.5):
+                        last_ui_refresh = now
                         
-                        if isinstance(command_result, tuple) and command_result[0] == "message":
-                            status_message = Text(command_result[1], style=command_result[2])
-                            message_timestamp = now
-                            command_result = None
+                        command_table = Table.grid(padding=(0, 1))
+                        command_table.add_column(style="bold yellow", width=15); command_table.add_column()
+                        command_table.add_row("stop <PID>", "终止指定PID的进程"); command_table.add_row("restart <PID>", "重启指定PID的进程")
+                        command_table.add_row("details <PID>", "查看指定PID的进程详情"); command_table.add_row("stopall", "终止所有受管进程")
+                        command_table.add_row("q / quit", "退出状态监控")
+                        command_table.add_row("Tab键", "补全指令或PID")
+
+                        suggestion = ""
+                        parts = input_buffer.split(" ", 1)
+                        if len(parts) == 1 and parts[0]:
+                             suggestion = next((cmd for cmd in COMMANDS if cmd.startswith(parts[0].lower()) and cmd != parts[0].lower()), "")
+
+                        input_text = Text(f"> {input_buffer}", no_wrap=True)
+                        if suggestion:
+                            input_text.append(suggestion[len(input_buffer):], style="italic dim")
                         
-                        if status_message.plain and now - message_timestamp > 3:
-                            status_message = Text()
-                            data_changed = True
+                        if int(now * 2) % 2 == 0:
+                           input_text.append("_") # ▋
 
-                        if input_changed or data_changed:
-                            command_table = Table.grid(padding=(0, 1)); command_table.add_column(style="bold yellow", width=15); command_table.add_column()
-                            command_table.add_row("stop <PID>", "终止指定PID的进程"); command_table.add_row("restart <PID>", "重启指定PID的进程")
-                            command_table.add_row("details <PID>", "查看指定PID的进程详情"); command_table.add_row("stopall", "终止所有受管进程")
-                            command_table.add_row("q / quit", "退出状态监控")
-                            
-                            suggestion = next((cmd for cmd in COMMANDS if cmd.startswith(input_buffer.lower()) and cmd != input_buffer.lower()), "")
-                            input_text = Text(f"> {input_buffer}", no_wrap=True)
-                            if suggestion: input_text.append(suggestion[len(input_buffer):], style="dim")
+                        layout = Layout()
+                        layout.split_column(
+                            Panel(command_table, title="[bold]可用命令[/bold]", border_style="dim"),
+                            process_table,
+                            Panel(input_text, border_style="cyan", title="输入命令", height=3)
+                        )
+                        live.update(layout)
+                        live.refresh()
 
-                            input_layout = Layout(Panel(input_text, border_style="cyan", title="输入命令", height=3), name="input")
-                            status_layout = Layout(Panel(status_message, border_style="dim", title="状态", height=3), name="status")
-                            footer = Layout(); footer.split_row(input_layout, status_layout)
+                    time.sleep(0.02)
 
-                            layout = Layout(); layout.split_column(Panel(command_table, title="[bold]可用命令[/bold]", border_style="dim"), process_table, footer)
-                            live.update(layout); live.refresh()
-
-                        time.sleep(0.05)
-
-            except KeyboardInterrupt:
-                break
-
+            # --- 4. Live循环结束后，处理命令结果 ---
             if isinstance(command_result, dict):
                 self._show_process_details(command_result)
-                command_result = None  # 重置command_result
-                continue
             elif command_result == "quit":
-                break
-            
+                should_quit_monitor = True
+
         ui.print_info("\n已退出进程状态监控。")
         logger.info("用户退出进程状态监控")
-        ui.pause()
 
     def _show_process_details(self, details: dict):
         """在一个专用的屏幕上显示进程详情。"""

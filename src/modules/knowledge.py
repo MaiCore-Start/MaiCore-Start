@@ -18,6 +18,23 @@ class KnowledgeBuilder:
     def __init__(self):
         pass
     
+    def _get_bot_path(self, config: Dict[str, Any]) -> Optional[str]:
+        """根据bot类型获取正确的本体路径"""
+        bot_type = config.get("bot_type", "MaiBot")  # 默认为MaiBot以兼容旧配置
+        
+        if bot_type == "MoFox_bot":
+            bot_path = config.get("mofox_path", "")
+            if not bot_path:
+                ui.print_error("墨狐（MoFox_bot）路径未配置")
+                return None
+            return bot_path
+        else:  # "MaiBot" or other unknown types
+            bot_path = config.get("mai_path", "")
+            if not bot_path:
+                ui.print_error("麦麦（MaiBot）路径未配置")
+                return None
+            return bot_path
+    
     def _check_lpmm_version(self, config: Dict[str, Any]) -> bool:
         """
         检查LPMM功能版本要求
@@ -35,7 +52,7 @@ class KnowledgeBuilder:
         
         # 解析版本号
         try:
-            if version.lower() in ('main', 'dev'):
+            if version.lower() in ('main', 'dev','master'):
                 # main和dev分支通常是最新版本，直接返回True
                 return True
             # 提取版本号中的数字部分，如 "0.6.3-alpha" -> "0.6.3"
@@ -74,13 +91,13 @@ class KnowledgeBuilder:
             logger.error("版本号解析失败", version=version, error=str(e))
             return False
     
-    def run_lpmm_script(self, mai_path: str, script_name: str, description: str, 
+    def run_lpmm_script(self, bot_path: str, script_name: str, description: str,
                        warning_messages: Optional[list] = None) -> bool:
         """
         运行LPMM相关脚本的通用函数
         
         Args:
-            mai_path: 麦麦本体路径
+            bot_path: Bot本体路径
             script_name: 脚本名称
             description: 操作描述
             warning_messages: 警告信息列表
@@ -100,7 +117,7 @@ class KnowledgeBuilder:
                 ui.print_info("操作已取消")
                 return False
 
-            script_path = os.path.join(mai_path, "scripts", script_name)
+            script_path = os.path.join(bot_path, "scripts", script_name)
             if not os.path.exists(script_path):
                 ui.print_error(f"脚本文件不存在：{script_name}")
                 logger.error("LPMM脚本不存在", script=script_name, path=script_path)
@@ -112,7 +129,7 @@ class KnowledgeBuilder:
             
             # 构建在新cmd窗口中执行的命令
             # 使用 start cmd /k 打开新的cmd窗口并保持窗口打开
-            cmd_command = f'start cmd /k "cd /d "{mai_path}" && python scripts\\{script_name} && pause"'
+            cmd_command = f'start cmd /k "cd /d "{bot_path}" && python scripts\\{script_name} && pause"'
             
             # 执行命令
             process = subprocess.run(
@@ -146,9 +163,8 @@ class KnowledgeBuilder:
         Returns:
             执行是否成功
         """
-        mai_path = config.get("mai_path", "")
-        if not mai_path:
-            ui.print_error("麦麦路径未配置")
+        bot_path = self._get_bot_path(config)
+        if not bot_path:
             return False
         
         # 检查版本要求
@@ -156,14 +172,14 @@ class KnowledgeBuilder:
             return False
         
         warnings = [
-            "该进程将处理\\MaiBot\\data/lpmm_raw_data目录下的所有.txt文件。\n",
-            "处理后的数据将全部合并为一个.JSON文件并储存在\\MaiBot\\data/imported_lpmm_data目录中。"
+            "该进程将处理 Bot 本体路径下 data/lpmm_raw_data 目录下的所有.txt文件。\n",
+            "处理后的数据将全部合并为一个.JSON文件并储存在 data/imported_lpmm_data 目录中。"
         ]
 
 
         return self.run_lpmm_script(
-            mai_path, 
-            "raw_data_preprocessor.py", 
+            bot_path,
+            "raw_data_preprocessor.py",
             "LPMM知识库文本分割",
             warnings
         )
@@ -178,9 +194,8 @@ class KnowledgeBuilder:
         Returns:
             执行是否成功
         """
-        mai_path = config.get("mai_path", "")
-        if not mai_path:
-            ui.print_error("麦麦路径未配置")
+        bot_path = self._get_bot_path(config)
+        if not bot_path:
             return False
         
         # 检查版本要求
@@ -194,7 +209,7 @@ class KnowledgeBuilder:
         ]
         
         return self.run_lpmm_script(
-            mai_path,
+            bot_path,
             "info_extraction.py",
             "LPMM知识库实体提取",
             warnings
@@ -210,9 +225,8 @@ class KnowledgeBuilder:
         Returns:
             执行是否成功
         """
-        mai_path = config.get("mai_path", "")
-        if not mai_path:
-            ui.print_error("麦麦路径未配置")
+        bot_path = self._get_bot_path(config)
+        if not bot_path:
             return False
         
         # 检查版本要求
@@ -230,7 +244,7 @@ class KnowledgeBuilder:
         ]
         
         return self.run_lpmm_script(
-            mai_path,
+            bot_path,
             "import_openie.py",
             "LPMM知识库知识图谱导入",
             warnings
@@ -247,9 +261,9 @@ class KnowledgeBuilder:
         Returns:
             执行是否成功
         """
-        mai_path = config.get("mai_path", "")
-        if not mai_path:
-            ui.print_error("麦麦路径未配置")
+        bot_path = self._get_bot_path(config)
+        if not bot_path:
+            # _get_bot_path 会打印错误信息
             return False
         
         # 检查版本要求
@@ -328,7 +342,7 @@ class KnowledgeBuilder:
         ui.print_success("所有步骤已成功完成！")
         ui.console.print("您的LPMM知识库现已准备就绪", style=ui.colors["info"])
         
-        logger.info("LPMM一条龙服务完成", mai_path=mai_path)
+        logger.info("LPMM一条龙服务完成", bot_path=bot_path)
         return True
     
     def legacy_knowledge_build(self, config: Dict[str, Any]) -> bool:
@@ -696,13 +710,13 @@ class KnowledgeBuilder:
             # 解析失败时，保守假设为旧版本
             return True
 
-    def _run_lpmm_script_internal(self, mai_path: str, script_name: str, description: str, 
+    def _run_lpmm_script_internal(self, bot_path: str, script_name: str, description: str,
                                  skip_confirm: bool = False) -> bool:
         """
         运行LPMM相关脚本的内部函数（用于一条龙服务）
         
         Args:
-            mai_path: 麦麦本体路径
+            bot_path: Bot本体路径
             script_name: 脚本名称
             description: 操作描述
             skip_confirm: 是否跳过确认提示
@@ -711,7 +725,7 @@ class KnowledgeBuilder:
             执行是否成功
         """
         try:
-            scripts_dir = os.path.join(mai_path, "scripts")
+            scripts_dir = os.path.join(bot_path, "scripts")
             script_path = os.path.join(scripts_dir, script_name)
             if not os.path.exists(script_path):
                 ui.print_error(f"脚本文件不存在：{script_name}")
@@ -724,7 +738,7 @@ class KnowledgeBuilder:
             
             # 构建在新cmd窗口中执行的命令
             # 使用 start cmd /k 打开新的cmd窗口并保持窗口打开
-            cmd_command = f'start cmd /k "cd /d "{mai_path}" && python scripts\\{script_name} && echo. && echo 脚本执行完成！ && pause"'
+            cmd_command = f'start cmd /k "cd /d "{bot_path}" && python scripts\\{script_name} && echo. && echo 脚本执行完成！ && pause"'
             
             # 执行命令
             process = subprocess.run(
@@ -768,14 +782,13 @@ class KnowledgeBuilder:
         Returns:
             执行是否成功
         """
-        mai_path = config.get("mai_path", "")
-        if not mai_path:
-            ui.print_error("麦麦路径未配置")
+        bot_path = self._get_bot_path(config)
+        if not bot_path:
             return False
         
         return self._run_lpmm_script_internal(
-            mai_path, 
-            "raw_data_preprocessor.py", 
+            bot_path,
+            "raw_data_preprocessor.py",
             "LPMM知识库文本分割",
             skip_confirm=True
         )
@@ -790,13 +803,12 @@ class KnowledgeBuilder:
         Returns:
             执行是否成功
         """
-        mai_path = config.get("mai_path", "")
-        if not mai_path:
-            ui.print_error("麦麦路径未配置")
+        bot_path = self._get_bot_path(config)
+        if not bot_path:
             return False
         
         return self._run_lpmm_script_internal(
-            mai_path,
+            bot_path,
             "info_extraction.py",
             "LPMM知识库实体提取",
             skip_confirm=True
@@ -812,13 +824,12 @@ class KnowledgeBuilder:
         Returns:
             执行是否成功
         """
-        mai_path = config.get("mai_path", "")
-        if not mai_path:
-            ui.print_error("麦麦路径未配置")
+        bot_path = self._get_bot_path(config)
+        if not bot_path:
             return False
         
         return self._run_lpmm_script_internal(
-            mai_path,
+            bot_path,
             "import_openie.py",
             "LPMM知识库知识图谱导入",
             skip_confirm=True
@@ -827,3 +838,4 @@ class KnowledgeBuilder:
 
 # 全局知识库构建器实例
 knowledge_builder = KnowledgeBuilder()
+

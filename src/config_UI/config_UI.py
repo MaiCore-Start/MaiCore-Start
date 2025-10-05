@@ -71,7 +71,10 @@ async def update_config(name: str, request: Request):
     data = await request.json()
     if name in config["configurations"]:
         for k, v in data.items():
-            config["configurations"][name][k] = v
+            if k == "absolute_serial_number":
+                config["configurations"][name][k] = int(v)
+            else:
+                config["configurations"][name][k] = v
         save_config(config)
         return {"success": True}
     return {"success": False, "msg": "配置不存在"}
@@ -97,7 +100,7 @@ async def create_config(request: Request):
     abs_num = len(used_nums) + 1
     while abs_num in used_nums:
         abs_num += 1
-    new_config["absolute_serial_number"] = str(abs_num)
+    new_config["absolute_serial_number"] = abs_num
     # 路径校验
     for k in ["mai_path", "mofox_path", "adapter_path", "napcat_path", "venv_path", "mongodb_path", "webui_path"]:
         if not is_valid_path(new_config.get(k, "")):
