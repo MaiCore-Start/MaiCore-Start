@@ -40,6 +40,9 @@ class PConfig:
         },
         "display": {
             "max_versions_display": 20
+        },
+        "on_exit": {
+            "process_action": "ask"
         }
     }
 

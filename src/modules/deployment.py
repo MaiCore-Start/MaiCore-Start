@@ -28,6 +28,7 @@ from tqdm import tqdm
 
 from ..core.config import config_manager
 from ..core.p_config import p_config_manager
+from ..core.logging import set_console_log_level, reset_console_log_level
 from ..ui.interface import ui
 from ..utils.common import validate_path
 from .mongodb_installer import mongodb_installer
@@ -1202,6 +1203,7 @@ pause
     
     def deploy_instance(self) -> bool:
         """部署新实例 - 重构版本"""
+        set_console_log_level("WARNING")
         try:
             ui.clear_screen()
             ui.components.show_title("实例部署助手", symbol="🚀")
@@ -1231,7 +1233,7 @@ pause
             # 定义bot_path_key以传递给后续函数
             bot_type = deploy_config.get("bot_type", "MaiBot")
             bot_path_key = "mai_path" if bot_type == "MaiBot" else "mofox_path"
-            self._show_post_deployment_info(paths.get(bot_path_key, ""), deploy_config)
+            self._show_post_deployment_info(paths.get(bot_path_key, ""), deploy_config, paths.get("adapter_path", ""))
 
             logger.info("实例部署完成", serial=deploy_config['serial_number'])
             return True
@@ -1240,6 +1242,8 @@ pause
             ui.print_error(f"部署失败：{str(e)}")
             logger.error("实例部署失败", error=str(e))
             return False
+        finally:
+            reset_console_log_level()
     
     def _check_network_for_deployment(self) -> bool:
         """检查网络连接用于部署"""
@@ -1827,10 +1831,10 @@ pause
         bot_path = paths.get(bot_path_key, "")
         
         ui.console.print("\n[⚙️ 第六步：配置文件设置]", style=ui.colors["primary"])
-        adapter_path = paths["adapter_path"]
-        napcat_path = paths["napcat_path"]
-        mongodb_path = paths["mongodb_path"]
-        webui_path = paths["webui_path"]
+        adapter_path = paths.get("adapter_path", "")
+        napcat_path = paths.get("napcat_path", "")
+        mongodb_path = paths.get("mongodb_path", "")
+        webui_path = paths.get("webui_path", "")
         
         # 获取版本信息以进行条件判断
         version_name = deploy_config.get("selected_version", {}).get("name", "")
@@ -1840,14 +1844,13 @@ pause
             # 准备路径
             config_dir = os.path.join(bot_path, "config")
             template_dir = os.path.join(bot_path, "template")
-            adapter_config_dir = os.path.join(bot_path, "adapter") if adapter_path and adapter_path != "无需适配器" else None
             
             # 1. 处理Bot主程序配置文件
             ui.print_info(f"正在设置{bot_type}配置文件...")
             
             # --- 严格按照版本逻辑处理配置文件 ---
             
-            # Case: MaiBot >= 0.10.0 (按用户详细要求)
+            # Case: MaiBot >= 0.10.0
             if bot_type == "MaiBot" and compare_versions(version_name, "0.10.0") >= 0:
                 os.makedirs(config_dir, exist_ok=True)
                 ui.print_info(f"为 MaiBot >= 0.10.0 创建标准配置文件...")
@@ -1879,7 +1882,7 @@ pause
                 else:
                     ui.print_warning(f"⚠️ 未找到模板: plugin_config_template.toml")
             
-            # Case: 其他所有情况 (旧版MaiBot, MoFox_bot)
+            # Case: 其他所有情况 (旧版MaiBot, MoFox_bot, MaiBot分支)
             else:
                 os.makedirs(config_dir, exist_ok=True)
                 ui.print_info(f"为 {bot_type} v{version_name} 创建标准配置文件...")
@@ -1893,8 +1896,13 @@ pause
                 else:
                     ui.print_warning(f"⚠️ 未找到模板: {bot_config_template}")
 
-                # MoFox_bot 特有的 model_config.toml
-                if bot_type == "MoFox_bot":
+                # MoFox_bot or non-classical MaiBot branches get model_config.toml
+                version_info = deploy_config.get("selected_version", {})
+                is_maibot_branch_not_classical = (bot_type == "MaiBot" and
+                                     version_info.get("type") == "branch" and
+                                     version_info.get("name") != "classical")
+
+                if bot_type == "MoFox_bot" or is_maibot_branch_not_classical:
                     model_config_template = os.path.join(template_dir, "model_config_template.toml")
                     model_config_target = os.path.join(config_dir, "model_config.toml")
                     if os.path.exists(model_config_template):
@@ -1931,35 +1939,38 @@ pause
             else:
                 ui.print_warning(f"⚠️ 未找到环境变量模板文件: {env_template}")
 
-            # 2. 处理适配器配置文件 (逻辑不变)
+            # 2. 处理适配器配置文件
             if adapter_path and adapter_path != "无需适配器" and not ("失败" in adapter_path or "版本较低" in adapter_path):
-                ui.print_info("正在设置适配器配置文件...")
-                adapter_template_dir = os.path.join(adapter_path, "template")
-                if os.path.exists(adapter_template_dir) and adapter_config_dir:
-                    for file in os.listdir(adapter_template_dir):
-                         if file.endswith(('.toml', '.json', '.yaml')):
-                            source_file = os.path.join(adapter_template_dir, file)
-                            target_filename = file.replace('template_', '').replace('_template', '')
-                            target_file = os.path.join(adapter_config_dir, target_filename)
-                            try:
-                                shutil.copy2(source_file, target_file)
-                                ui.print_success(f"✅ 适配器配置文件: {target_filename}")
-                            except Exception as e:
-                                ui.print_warning(f"⚠️ 适配器配置文件复制失败: {file} - {str(e)}")
-                else:
-                    ui.print_info("适配器无需额外配置文件")
+                is_mofox_internal = (bot_type == "MoFox_bot" and not deploy_config.get("install_adapter"))
 
-            # 3. 创建NapCat相关配置提示 (逻辑不变)
+                if not is_mofox_internal:
+                    ui.print_info("正在设置外部适配器配置文件...")
+                    adapter_template_dir = os.path.join(adapter_path, "template")
+                    if os.path.exists(adapter_template_dir):
+                        for file in os.listdir(adapter_template_dir):
+                            if file.endswith(('.toml', '.json', '.yaml')):
+                                source_file = os.path.join(adapter_template_dir, file)
+                                target_filename = file.replace('template_', '').replace('_template', '')
+                                target_file = os.path.join(adapter_path, target_filename)
+                                try:
+                                    shutil.copy2(source_file, target_file)
+                                    ui.print_success(f"✅ 适配器配置文件: {target_filename}")
+                                except Exception as e:
+                                    ui.print_warning(f"⚠️ 适配器配置文件复制失败: {file} - {str(e)}")
+                    else:
+                        ui.print_info("适配器无需额外配置文件")
+
+            # 3. 创建NapCat相关配置提示
             if napcat_path:
                 ui.print_info("NapCat配置提醒:")
                 ui.console.print("  • 请参考 https://docs.mai-mai.org/manual/adapters/napcat.html")
 
-            # 4. MongoDB配置提示 (逻辑不变)
+            # 4. MongoDB配置提示
             if mongodb_path:
                 ui.print_info("MongoDB配置完成:")
                 ui.console.print(f"  • MongoDB路径: {mongodb_path}")
             
-            # 5. WebUI配置提示 (逻辑不变)
+            # 5. WebUI配置提示
             if webui_path:
                 ui.print_info("WebUI配置完成:")
                 ui.console.print(f"  • WebUI路径: {webui_path}")
@@ -1991,9 +2002,12 @@ pause
         if not paths[bot_path_key]:
             raise Exception(f"{bot_type}安装失败")
 
-        # 步骤2：安装适配器
+        # 步骤2：处理适配器路径
         if deploy_config.get("install_adapter"):
             paths["adapter_path"] = self._install_adapter_if_needed(deploy_config, paths[bot_path_key])
+        elif bot_type == "MoFox_bot":
+            ui.print_info("检测到MoFox_bot，将记录内置适配器路径")
+            paths["adapter_path"] = os.path.join(paths[bot_path_key], "config", "plugins", "napcat_adapter")
 
         # 步骤3：安装NapCat
         if deploy_config.get("install_napcat") and deploy_config.get("napcat_version"):
@@ -2094,17 +2108,21 @@ pause
         logger.info("配置创建成功", config=new_config)
         return True
     
-    def _show_post_deployment_info(self, bot_path: str, bot_config: Dict):
+    def _show_post_deployment_info(self, bot_path: str, bot_config: Dict, adapter_path: str = ""):
         """显示部署后的信息并提供打开配置文件的选项"""
-        version_name = bot_config.get("selected_version", {}).get("name", "")
+        version_info = bot_config.get("selected_version", {})
+        version_name = version_info.get("name", "")
         bot_type = bot_config.get("bot_type", "MaiBot")
         from ..utils.version_detector import compare_versions
         from ..utils.common import open_files_in_editor
 
         is_modern_config = compare_versions(version_name, "0.10.0") >= 0
+        is_maibot_branch_not_classical = (bot_type == "MaiBot" and
+                                      version_info.get("type") == "branch" and
+                                      version_info.get("name") != "classical")
 
         ui.console.print("\n[📝 后续配置提醒]", style=ui.colors["info"])
-        if is_modern_config or bot_type == "MoFox_bot":
+        if is_modern_config or bot_type == "MoFox_bot" or is_maibot_branch_not_classical:
             ui.console.print("1. 在 'config/model_config.toml' 文件中配置您的API密钥。", style=ui.colors["attention"])
         else:
             ui.console.print("1. 在根目录的 '.env' 文件中配置您的APIKey（MaiCore的0.10.0及以上版本已经转移至model_config.toml文件中，LPMM知识库构建所需模型亦在此文件中配置）。", style=ui.colors["attention"])
@@ -2123,7 +2141,7 @@ pause
             files_to_open = []
             
             # 确定要打开的配置文件
-            if is_modern_config or bot_type == "MoFox_bot":
+            if is_modern_config or bot_type == "MoFox_bot" or is_maibot_branch_not_classical:
                 model_config = os.path.join(bot_path, "config", "model_config.toml")
                 if os.path.exists(model_config):
                     files_to_open.append(model_config)
@@ -2136,10 +2154,25 @@ pause
             if os.path.exists(bot_config_file):
                 files_to_open.append(bot_config_file)
 
-            open_files_in_editor(files_to_open)
+            # 处理适配器配置文件
+            is_mofox_internal_adapter = (bot_type == "MoFox_bot" and not bot_config.get("install_adapter"))
+
+            if adapter_path and adapter_path not in ["无需适配器"]:
+                adapter_config_file = os.path.join(adapter_path, "config.toml")
+                if os.path.exists(adapter_config_file):
+                    files_to_open.append(adapter_config_file)
+                elif is_mofox_internal_adapter:
+                    # 如果MoFox_bot的内置适配器配置不存在，检查plugins文件夹
+                    plugins_folder = os.path.join(bot_path, "config", "plugins")
+                    if not os.path.exists(plugins_folder):
+                        ui.print_warning("内置适配器配置文件尚未生成，请先启动一次主程序以自动创建，然后再使用本功能打开。")
+
+            if files_to_open:
+                open_files_in_editor(files_to_open)
     
     def update_instance(self) -> bool:
         """更新实例"""
+        set_console_log_level("WARNING")
         try:
             ui.clear_screen()
             ui.console.print("[🔄 实例更新]", style=ui.colors["warning"])
@@ -2344,9 +2377,12 @@ pause
             ui.print_error(f"更新过程出错：{str(e)}")
             logger.error("更新过程异常", error=str(e))
             return False
+        finally:
+            reset_console_log_level()
     
     def delete_instance(self) -> bool:
         """删除实例并提供备份选项"""
+        set_console_log_level("WARNING")
         try:
             ui.clear_screen()
             ui.components.show_title("实例删除", symbol="🗑️")
@@ -2464,6 +2500,8 @@ pause
             ui.print_error(f"删除过程中发生未知错误：{str(e)}")
             logger.error("删除实例失败", error=str(e))
             return False
+        finally:
+            reset_console_log_level()
     
     def _check_and_install_webui(self, deploy_config: Dict, bot_path: str, venv_path: str = "") -> Tuple[bool, str]:
         """检查并安装WebUI（如果需要）"""

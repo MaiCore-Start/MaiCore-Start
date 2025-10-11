@@ -17,6 +17,39 @@ from .p_config import p_config_manager
 
 LOG_DIR = "log"
 
+# 创建一个模块级别的logger实例，供本模块内部函数使用
+# 注意：在setup_logging完成前，它可能不会按预期工作
+logger = structlog.get_logger(__name__)
+
+# --- 动态级别控制 ---
+_default_console_level = logging.WARNING
+
+def set_console_log_level(level: str):
+    """动态设置控制台日志级别"""
+    try:
+        level_val = getattr(logging, level.upper())
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers:
+            if isinstance(handler, RichHandler):
+                handler.setLevel(level_val)
+                logger.debug(f"控制台日志级别已临时设置为 {level}")
+                break
+    except Exception as e:
+        logger.error("设置控制台日志级别失败", error=str(e))
+
+def reset_console_log_level():
+    """将控制台日志级别恢复为默认值"""
+    try:
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers:
+            if isinstance(handler, RichHandler):
+                handler.setLevel(_default_console_level)
+                logger.debug("控制台日志级别已恢复为默认")
+                break
+    except Exception as e:
+        logger.error("恢复控制台日志级别失败", error=str(e))
+
+
 def rotate_logs():
     """
     扫描日志目录并删除超过指定保留天数的旧日志文件。
@@ -28,7 +61,7 @@ def rotate_logs():
         # 确保保留天数是有效的正整数
         if not isinstance(retention_days, int) or retention_days <= 0:
             retention_days = 30
-            structlog.get_logger().warning(
+            logger.warning(
                 "无效的日志保留天数配置，将使用默认值30天",
                 config_value=p_config_manager.get("logging.log_rotation_days")
             )
@@ -50,24 +83,24 @@ def rotate_logs():
                 # 如果日志文件早于截止日期，则删除它
                 if log_date < cutoff_date:
                     os.remove(log_file)
-                    structlog.get_logger().info("已删除旧日志文件", file=log_file)
+                    logger.info("已删除旧日志文件", file=log_file)
             except (ValueError, IndexError) as e:
                 # 如果文件名格式不正确，记录警告并跳过
-                structlog.get_logger().warning(
+                logger.warning(
                     "无法解析日志文件名，跳过轮转检查",
                     file=log_file,
                     error=str(e)
                 )
             except Exception as e:
                 # 捕获其他删除文件时可能发生的异常
-                structlog.get_logger().error(
+                logger.error(
                     "删除旧日志文件失败",
                     file=log_file,
                     error=str(e)
                 )
     except Exception as e:
         # 捕获在读取配置或执行轮转时发生的任何顶层异常
-        structlog.get_logger().error("日志轮转失败", error=str(e))
+        logger.error("日志轮转失败", error=str(e))
 
 
 def setup_logging(level: str = "INFO"):
@@ -125,7 +158,7 @@ def setup_logging(level: str = "INFO"):
     console_formatter = logging.Formatter('%(message)s')
     console_handler.setFormatter(console_formatter)
     # 设置控制台只显示WARNING及以上级别的日志
-    console_handler.setLevel(logging.WARNING)
+    console_handler.setLevel(_default_console_level)
 
     # 文件handler，写入JSONL文件
     file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')

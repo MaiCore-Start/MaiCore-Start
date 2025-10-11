@@ -30,6 +30,7 @@ class MaiMaiLauncher:
     
     def __init__(self):
         self.running = True
+        self._keep_processes_on_exit = False
         setup_console()
         logger.info("麦麦启动器已启动")
     
@@ -339,9 +340,10 @@ class MaiMaiLauncher:
             from src.ui.theme import COLORS
             current_colors = p_config_manager.get_theme_colors()
             current_log_days = p_config_manager.get("logging.log_rotation_days", 30)
-            ui.show_program_settings_menu(current_colors, current_log_days)
+            on_exit_action = p_config_manager.get("on_exit.process_action", "ask")
+            ui.show_program_settings_menu(current_colors, current_log_days, on_exit_action)
             
-            choice = ui.get_choice("请选择操作", ["L", "C", "R", "Q"])
+            choice = ui.get_choice("请选择操作", ["L", "E", "C", "R", "Q"])
             
             if choice == "Q":
                 break
@@ -362,6 +364,30 @@ class MaiMaiLauncher:
                             ui.print_error("请输入一个大于0的整数。")
                     except ValueError:
                         ui.print_error("无效输入，请输入一个整数。")
+            
+            elif choice == "E":
+                # 修改退出时操作
+                actions = ["ask", "terminate", "keep"]
+                action_map = {"ask": "询问", "terminate": "一律关闭", "keep": "一律保留"}
+                
+                options_text = " / ".join([f"[{action[0].upper()}] {action_map[action]}" for action in actions])
+                
+                while True:
+                    user_input = ui.get_input(f"请选择操作 ({options_text}): ").lower()
+                    
+                    selected_action = ""
+                    if user_input == 'a': selected_action = "ask"
+                    elif user_input == 't': selected_action = "terminate"
+                    elif user_input == 'k': selected_action = "keep"
+
+                    if selected_action in actions:
+                        p_config_manager.set("on_exit.process_action", selected_action)
+                        p_config_manager.save()
+                        ui.print_success(f"退出时操作已更新为: {action_map[selected_action]}")
+                        ui.pause()
+                        break
+                    else:
+                        ui.print_error("无效输入。")
 
             elif choice == "C":
                 color_keys = list(current_colors.keys())
@@ -567,9 +593,47 @@ class MaiMaiLauncher:
                 logger.debug("用户选择", choice=choice)
                 
                 if choice == "Q":
-                    self.running = False
-                    ui.print_info("感谢使用麦麦启动器！")
-                    logger.info("用户退出程序")
+                    has_child_processes = len(launcher.get_managed_pids()) > 1
+                    action = p_config_manager.get("on_exit.process_action", "ask")
+
+                    do_exit = False
+                    # 如果没有子进程，直接退出
+                    if not has_child_processes:
+                        do_exit = True
+                    elif action == "terminate":
+                        ui.print_info("根据设置，将关闭所有托管进程...")
+                        launcher.stop_all_processes()
+                        do_exit = True
+                    elif action == "keep":
+                        ui.print_info("根据设置，将保留所有托管进程...")
+                        self._keep_processes_on_exit = True
+                        do_exit = True
+                    else:  # "ask" or default
+                        ui.print_warning("检测到有正在运行的机器人进程。")
+                        while True:
+                            choice_exit = ui.get_input("退出启动器时要如何处理这些进程？[K]保留 [T]关闭 [C]取消退出: ").upper()
+                            if choice_exit == 'K':
+                                ui.print_info("将保留所有托管进程...")
+                                self._keep_processes_on_exit = True
+                                do_exit = True
+                                logger.info("用户选择保留进程并退出")
+                                break
+                            elif choice_exit == 'T':
+                                ui.print_info("将关闭所有托管进程...")
+                                launcher.stop_all_processes()
+                                do_exit = True
+                                logger.info("用户选择关闭进程并退出")
+                                break
+                            elif choice_exit == 'C':
+                                logger.info("用户取消退出程序")
+                                break  # breaks inner while, do_exit remains false
+                            else:
+                                ui.print_error("无效输入。")
+
+                    if do_exit:
+                        self.running = False
+                        ui.print_info("感谢使用麦麦启动器！")
+                        logger.info("用户退出程序")
                 elif choice == "A":
                     self.handle_launch_mai()
                 elif choice == "B":
@@ -598,8 +662,9 @@ class MaiMaiLauncher:
             ui.print_error(f"程序运行出错：{str(e)}")
             logger.error("程序运行异常", error=str(e))
         finally:
-            # 停止所有进程
-            launcher.stop_all_processes()
+            # 除非明确指示，否则停止所有进程
+            if not self._keep_processes_on_exit:
+                launcher.stop_all_processes()
             logger.info("启动器程序结束")
 
 

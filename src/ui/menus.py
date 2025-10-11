@@ -135,7 +135,7 @@ class Menus:
         self.console.print("====>>返回<<====")
         self.console.print(f" [Q] {self.symbols['back']} 返回上级", style=self.colors["exit"])
 
-    def show_program_settings_menu(self, current_colors: dict, current_log_days: int):
+    def show_program_settings_menu(self, current_colors: dict, current_log_days: int, on_exit_action: str):
         """显示程序设置菜单"""
         from rich.table import Table
         panel = Panel(
@@ -151,6 +151,11 @@ class Menus:
         self.console.print("\n[bold]日志设置[/bold]")
         self.console.print(f"  日志文件保留天数: [bold yellow]{current_log_days}[/bold yellow] 天")
         
+        # 显示退出设置
+        self.console.print("\n[bold]退出设置[/bold]")
+        action_map = {"ask": "询问", "terminate": "一律关闭", "keep": "一律保留"}
+        self.console.print(f"  退出时对机器人进程的操作: [bold yellow]{action_map.get(on_exit_action, '未知')}[/bold yellow]")
+
         # 显示当前颜色设置
         table = Table(title="当前主题颜色", show_header=True, header_style="bold magenta")
         table.add_column("选项", style="dim", width=6)
@@ -165,6 +170,7 @@ class Menus:
 
         self.console.print("\n====>>操作<<====")
         self.console.print(f" [L] {self.symbols['edit']} 修改日志保留天数", style=self.colors["success"])
+        self.console.print(f" [E] {self.symbols['edit']} 修改退出时操作", style=self.colors["success"])
         self.console.print(f" [C] {self.symbols['edit']} 修改颜色 (输入选项数字)", style=self.colors["success"])
         self.console.print(f" [R] {self.symbols['back']} 恢复默认设置", style=self.colors["error"])
         
