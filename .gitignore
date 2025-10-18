@@ -32,3 +32,5 @@ config/
 config.toml
 config_UI.json
 P-config.toml
+
+node_modules
