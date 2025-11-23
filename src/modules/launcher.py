@@ -439,6 +439,17 @@ class _AdapterComponent(_LaunchComponent):
     def start(self, process_manager: _ProcessManager) -> bool:
         if not self.is_enabled:
             return True
+        
+        # 获取bot类型以检查是否为MoFox_bot
+        bot_type = self.config.get("bot_type", "MaiBot")
+        adapter_path = self.config.get("adapter_path", "")
+        
+        # 对于MoFox_bot类型，如果适配器目录不存在，仅提醒用户并跳过启动
+        if bot_type == "MoFox_bot" and adapter_path and not os.path.exists(adapter_path):
+            ui.print_warning("MoFox_bot启动时检测到适配器目录不存在，将跳过适配器启动")
+            ui.print_info("适配器目录路径: " + adapter_path)
+            return True
+        
         ui.print_info("尝试启动适配器...")
         if super().start(process_manager):
             time.sleep(2) # 等待适配器启动
@@ -601,10 +612,23 @@ class MaiLauncher:
         self._register_components(config)
 
         if self._components['adapter'].is_enabled:
-            adapter_path = config.get("adapter_path", "")
-            valid, msg = validate_path(adapter_path, check_file="main.py")
-            if not valid:
-                errors.append(f"适配器路径: {msg}")
+            # 对于MoFox_bot类型，适配器目录可以不存在，仅提醒用户
+            if bot_type == "MoFox_bot":
+                adapter_path = config.get("adapter_path", "")
+                if adapter_path and not os.path.exists(adapter_path):
+                    # MoFox_bot可以不存在适配器目录，仅记录警告而非错误
+                    logger.warning("MoFox_bot启动时检测到适配器目录不存在，将跳过适配器启动", path=adapter_path)
+                elif adapter_path and os.path.exists(adapter_path):
+                    # 如果适配器目录存在，则验证main.py文件
+                    main_file = os.path.join(adapter_path, "main.py")
+                    if not os.path.exists(main_file):
+                        errors.append(f"适配器路径: 缺少必需文件: main.py")
+            else:
+                # 对于其他bot类型，严格验证适配器路径
+                adapter_path = config.get("adapter_path", "")
+                valid, msg = validate_path(adapter_path, check_file="main.py")
+                if not valid:
+                    errors.append(f"适配器路径: {msg}")
 
         if self._components['napcat'].is_enabled:
             napcat_path = config.get("napcat_path", "")
