@@ -29,7 +29,7 @@ import winreg
 REQUIREMENTS = 'requirements.txt'
 MAIN_SCRIPT = 'main_refactored.py'
 VENV_DIRS = ['venv', '.venv', 'env', '.env']
-PYTHON_INSTALLER = Path('install/python-3.12.8-amd64.exe')
+PYTHON_INSTALLER = Path('./install/python-3.12.8-amd64.exe')
 PYTHON_DOWNLOAD_URL = 'https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe'
 
 def find_existing_venv():

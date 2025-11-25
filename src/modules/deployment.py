@@ -827,22 +827,37 @@ class DeploymentManager:
         ui.console.print(panel_content)
         ui.pause("")
     
+    def clear_napcat_versions_cache(self):
+        """清除NapCat版本列表缓存"""
+        self._napcat_versions_cache = None
+        self._cache_timestamp = None
+        ui.print_success("✅ NapCat版本列表缓存已清除")
+        logger.info("NapCat版本缓存已清除")
+
     def select_napcat_version(self) -> Optional[Dict]:
         """选择NapCat版本"""
         ui.clear_screen()
         ui.components.show_title("选择NapCat版本", symbol="🐱")
         
-        ui.print_info("正在获取 NapCatQQ 的最新版本信息...")
-        napcat_versions = self.get_napcat_versions()
+        def show_napcat_versions():
+            """显示NapCat版本列表"""
+            ui.print_info("正在获取 NapCatQQ 的最新版本信息...")
+            return self.get_napcat_versions()
+        
+        napcat_versions = show_napcat_versions()
         
         while not napcat_versions:
             ui.print_error("无法获取NapCat版本信息，请检查网络连接。")
-            choice = ui.get_choice("[R] 重试 [Q] 跳过NapCat下载", ["R", "Q"])
+            choice = ui.get_choice("[R] 重试 [F] 刷新并清除缓存 [Q] 跳过NapCat下载", ["R", "F", "Q"])
             if choice == "Q":
                 return None
-            
-            ui.print_info("正在重试获取 NapCatQQ 的最新版本信息...")
-            napcat_versions = self.get_napcat_versions(force_refresh=True)
+            elif choice == "F":
+                self.clear_napcat_versions_cache()
+                ui.print_info("正在重新获取 NapCatQQ 的最新版本信息...")
+                napcat_versions = self.get_napcat_versions(force_refresh=True)
+            else:  # R
+                ui.print_info("正在重试获取 NapCatQQ 的最新版本信息...")
+                napcat_versions = self.get_napcat_versions(force_refresh=True)
         
         # 创建版本表格
         from rich.table import Table
@@ -887,7 +902,7 @@ class DeploymentManager:
             )
         
         ui.console.print(table)
-        ui.console.print("\n[Enter] 使用默认版本(第一个选项)  [Q] 跳过NapCat下载", style=ui.colors["info"])
+        ui.console.print("\n[Enter] 使用默认版本(第一个选项)  [F] 刷新版本列表  [Q] 跳过NapCat下载", style=ui.colors["info"])
         ui.console.print("提示：推荐使用基础版，适合大多数用户", style=ui.colors["success"])
         
         while True:
@@ -900,6 +915,68 @@ class DeploymentManager:
             
             if choice.upper() == 'Q':
                 return None
+            
+            if choice.upper() == 'F':
+                # 刷新版本列表
+                self.clear_napcat_versions_cache()
+                ui.print_info("正在刷新NapCat版本列表...")
+                napcat_versions = self.get_napcat_versions(force_refresh=True)
+                
+                if not napcat_versions:
+                    ui.print_error("刷新失败，无法获取版本信息")
+                    continue
+                
+                # 重新显示版本列表
+                ui.clear_screen()
+                ui.components.show_title("选择NapCat版本", symbol="🐱")
+                ui.print_success("✅ 版本列表已刷新")
+                
+                # 重新创建版本表格
+                from rich.table import Table
+                table = Table(
+                    show_header=True,
+                    header_style=ui.colors["table_header"],
+                    title="[bold]NapCat 可用版本 (已刷新)[/bold]",
+                    title_style=ui.colors["primary"],
+                    border_style=ui.colors["border"],
+                    show_lines=True
+                )
+                table.add_column("选项", style="cyan", width=6, justify="center")
+                table.add_column("版本", style=ui.colors["primary"], width=20)
+                table.add_column("类型", style="yellow", width=15, justify="center")
+                table.add_column("说明", style="green")
+                table.add_column("发布时间", style=ui.colors["blue"], width=12, justify="center")
+                
+                # 显示版本信息
+                for i, version in enumerate(napcat_versions, 1):
+                    # 提取版本类型
+                    version_type = "基础版" if "shell" in version["name"] and "onekey" not in version["name"] else \
+                                   "有头一键包" if "framework" in version["name"] else \
+                                   "无头一键包" if "shell" in version["name"] and "onekey" in version["name"] else "未知"
+                    
+                    # 发布时间格式化
+                    published_date = ""
+                    if version["published_at"]:
+                        try:
+                            dt = datetime.fromisoformat(version["published_at"].replace('Z', '+00:00'))
+                            published_date = dt.strftime("%Y-%m-%d")
+                        except:
+                            published_date = "未知"
+                    else:
+                        published_date = "未知"
+                    
+                    table.add_row(
+                        f"[{i}]",
+                        version["version"],
+                        version_type,
+                        version["description"],
+                        published_date
+                    )
+                
+                ui.console.print(table)
+                ui.console.print("\n[Enter] 使用默认版本(第一个选项)  [F] 刷新版本列表  [Q] 跳过NapCat下载", style=ui.colors["info"])
+                ui.console.print("提示：推荐使用基础版，适合大多数用户", style=ui.colors["success"])
+                continue
             
             try:
                 choice_num = int(choice)
