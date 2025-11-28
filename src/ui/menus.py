@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-& -*-
 """
 UI菜单模块
 负责定义和显示各种菜单
@@ -20,18 +20,19 @@ class Menus:
     def print_header(self):
         """打印程序头部"""
         header_text = (
-            "&&b         d&&           && 888888ba                                ,ad&&ba,  &&\n"
-            "&&&         &&&              &&     8b             &&              d8       8b &&                     &&\n"
-            "888b       d888              &&    ,8P             &&             d8'          &&                     &&\n"
-            "&& 8b     d8'&& ,adPYYba, && &&aaaa8P    ,adPYba,  &&MMM          &&           &&,dPPYba,  ,adPPYba,  &&MMM\n"
-            "&&  8b   d8' &&        && && 8b,   a8   da      ab &&    aaaaaaaa &&           &&P      8a         Y8 &&\n"
-            "&&   8b d8'  && ,adPPPP&& && &&     8b  &&      && &&    ******** Y8,          &&       && ,adPPPP&&  &&\n"
-            "&&    &&&'   && &&,   ,&& && &&     a8  qa,    ,ap &&,              Y8a.  .a8P &&       && &&,   ,&&  &&,\n"
-            "&&           &&  *8bdP Y8 && 888888P'    *q&aa&P*   *Y888             *Y&&Y*   &&       &&  *8bdP Y8   *Y888\n"
+ """
+ooo        ooooo  .oooooo.           .oooooo..o     .                          .   
+ &&.       .&&&` d&P`  `Y&b         d&P`    `Y&   .o&                        .o&  
+ &&&b     d'&&& &&&                 Y&&bo.      .o&&&oo  .oooo.   ooo  q&b .o&&&oo
+ & Y&&. .P  &&& &&&         &&&&&&&  `*Y&&&&o.    &&&   `P  )&&   `&&&``&P   &&&  
+ &  `&&&'   &&& &&&         *******      `“Y&&b   &&&    .oP&&&    &&&       &&&  
+ &    Y     &&& `&&b    ooo         oo     .d&P   &&& . d&(  &&&   &&&       &&& .
+o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&&`
+"""
         )
         self.console.print(header_text, style=self.colors["header"])
         self.console.print("促进多元化艺术创作发展普及", style=self.colors["header"])
-        self.console.print(f"\n{self.symbols['rocket']} 麦麦启动器控制台", style=self.colors["header"])
+        self.console.print(f"\n{self.symbols['rocket']} 麦麦核心启动器控制台", style=self.colors["header"])
         self.console.print("——————————", style=self.colors["border"])
         self.console.print("选择选项", style=self.colors["border"])
 

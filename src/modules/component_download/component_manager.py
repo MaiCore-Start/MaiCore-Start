@@ -185,7 +185,7 @@ class ComponentManager:
                 'nodejs': ['nodejs*.exe', 'nodejs*.msi'],
                 'vscode': ['VSCode*.exe', 'VSCode*.zip'],
                 'git': ['Git*.exe', 'Git*.msi'],
-                'go': ['go*.exe', 'go*.tar.gz'],
+                'go': ['go*.msi', 'go*.tar.gz'],  # 修正Go的清理模式
                 'python': ['python*.exe', 'python*.msi'],
                 'mongodb': ['mongodb*.exe', 'mongodb*.msi'],
                 'sqlitestudio': ['SQLiteStudio*.exe', 'SQLiteStudio*.zip'],
@@ -196,13 +196,74 @@ class ComponentManager:
                 for pattern in patterns[component_key]:
                     for file in temp_dir.glob(pattern):
                         if file.is_file():
-                            file.unlink()
-                            ui.print_info(f"已删除：{file.name}")
+                            self._safe_delete_file(file)
             
             ui.print_success("安装包清理完成")
             
         except Exception as e:
             ui.print_warning(f"清理安装包时发生错误：{str(e)}")
+    
+    def _safe_delete_file(self, file_path: Path, max_retries: int = 5, retry_delay: float = 1.0):
+        """安全删除文件，支持重试和强制删除"""
+        import time
+        import os
+        import stat
+        import subprocess
+        
+        for attempt in range(max_retries):
+            try:
+                # 检查文件是否存在
+                if not file_path.exists():
+                    ui.print_info(f"文件不存在，已跳过：{file_path.name}")
+                    return
+                
+                # 尝试普通删除
+                file_path.unlink()
+                ui.print_info(f"已删除：{file_path.name}")
+                return
+                
+            except PermissionError:
+                # 文件被占用，尝试强制删除
+                if attempt < max_retries - 1:
+                    ui.print_info(f"文件被占用，尝试强制删除 ({attempt + 1}/{max_retries}): {file_path.name}")
+                    
+                    try:
+                        # Windows下使用del命令强制删除
+                        if os.name == 'nt':
+                            # 尝试修改文件权限
+                            file_path.chmod(stat.S_IWRITE)
+                            # 使用del命令强制删除
+                            subprocess.run(['del', '/F', '/Q', str(file_path)],
+                                         shell=True, capture_output=True)
+                        else:
+                            # Linux/macOS下使用rm命令强制删除
+                            file_path.chmod(0o777)
+                            subprocess.run(['rm', '-f', str(file_path)],
+                                         capture_output=True)
+                        
+                        # 等待一下再检查
+                        time.sleep(retry_delay)
+                        
+                        # 再次尝试删除
+                        if file_path.exists():
+                            file_path.unlink()
+                        
+                        ui.print_info(f"已强制删除：{file_path.name}")
+                        return
+                        
+                    except Exception as force_error:
+                        ui.print_warning(f"强制删除失败 ({attempt + 1}/{max_retries}): {str(force_error)}")
+                        time.sleep(retry_delay)
+                        continue
+                else:
+                    ui.print_error(f"无法删除文件，已达到最大重试次数：{file_path.name}")
+                    
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    ui.print_warning(f"删除文件失败，重试中 ({attempt + 1}/{max_retries}): {str(e)}")
+                    time.sleep(retry_delay)
+                else:
+                    ui.print_error(f"删除文件最终失败：{file_path.name}, 错误: {str(e)}")
     
     def download_multiple_components(self, component_keys: List[str]) -> Dict[str, bool]:
         """批量下载组件"""

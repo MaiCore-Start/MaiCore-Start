@@ -3,6 +3,7 @@
 SQLiteStudio下载器
 """
 
+import os
 import platform
 from pathlib import Path
 from typing import Optional
@@ -35,19 +36,22 @@ class SQLiteStudioDownloader(BaseDownloader):
         # SQLiteStudio是跨平台的，通常提供zip包
         version = "3.4.4"
         
+        # 统一使用正确的GitHub用户名
+        github_user = "pawelsalawa"
+        
         if self.system == 'windows':
-            return f"https://github.com/pawelsalawa/sqlitestudio/releases/download/{version}/SQLiteStudio-{version}-Windows.zip"
+            return f"https://github.com/{github_user}/sqlitestudio/releases/download/{version}/SQLiteStudio-{version}-Windows.zip"
         elif self.system == 'darwin':  # macOS
-            return f"https://github.com/pawelsaw/sqlitestudio/releases/download/{version}/SQLiteStudio-{version}.dmg"
+            return f"https://github.com/{github_user}/sqlitestudio/releases/download/{version}/SQLiteStudio-{version}.dmg"
         else:  # Linux
-            return f"https://github.com/pawelsaw/sqlitestudio/releases/download/{version}/SQLiteStudio-{version}.tar.gz"
+            return f"https://github.com/{github_user}/sqlitestudio/releases/download/{version}/SQLiteStudio-{version}.tar.gz"
     
     def get_filename(self) -> str:
         """获取下载文件名"""
         version = "3.4.4"
         
         if self.system == 'windows':
-            return f"SQLiteStudio-{version}.zip"
+            return f"SQLiteStudio-{version}-Windows.zip"
         elif self.system == 'darwin':
             return f"SQLiteStudio-{version}.dmg"
         else:
@@ -114,7 +118,11 @@ class SQLiteStudioDownloader(BaseDownloader):
                     ui.print_info("例如: sudo cp -r {extract_dir} /opt/SQLiteStudio")
                     
                     # 查找可执行文件
-                    exe_files = list(extract_dir.glob("SQLiteStudio") if self.arch == 'x86_64' else "SQLiteStudio*")
+                    if self.arch == 'x86_64':
+                        exe_files = list(extract_dir.glob("SQLiteStudio"))
+                    else:
+                        exe_files = list(extract_dir.glob("SQLiteStudio*"))
+                    
                     if exe_files:
                         ui.print_info(f"找到可执行文件: {exe_files[0]}")
                         if ui.confirm("是否创建桌面快捷方式？"):

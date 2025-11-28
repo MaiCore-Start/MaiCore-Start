@@ -34,3 +34,6 @@ config_UI.json
 P-config.toml
 
 node_modules
+
+# --- 忽略临时文件夹 ---
+Temporary/
