@@ -52,5 +52,6 @@ SYMBOLS = {
     "new": "✨",
     "plugin": "🧩",
     "attention": "🚨",
-    "download": "📥"
+    "download": "📥",
+    "refresh": ""
 }

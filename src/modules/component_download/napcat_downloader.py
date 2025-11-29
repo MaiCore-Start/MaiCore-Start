@@ -12,7 +12,7 @@ import structlog
 
 from ...ui.interface import ui
 from .base_downloader import BaseDownloader
-from ...modules.deployment import deployment_manager
+from ...modules.deployment_core.napcat_deployer import NapCatDeployer
 
 logger = structlog.get_logger(__name__)
 
@@ -22,7 +22,7 @@ class NapCatDownloader(BaseDownloader):
     
     def __init__(self):
         super().__init__("NapCat")
-        self.deployment_manager = deployment_manager
+        self.napcat_deployer = NapCatDeployer()
     
     def get_napcat_versions(self) -> List[Dict]:
         """获取NapCat版本列表"""
@@ -38,7 +38,7 @@ class NapCatDownloader(BaseDownloader):
                 if attempt > 0:
                     ui.print_info(f"重试获取NapCat版本列表... (尝试 {attempt + 1}/{max_retries})")
                 
-                versions = self.deployment_manager.get_napcat_versions()
+                versions = self.napcat_deployer.get_napcat_versions()
                 return versions
                 
             except Exception as e:
@@ -176,8 +176,7 @@ class NapCatDownloader(BaseDownloader):
                     if choice.upper() == 'R' and using_fallback:
                         ui.print_info("正在重新获取版本列表...")
                         # 清除缓存，强制刷新
-                        self.deployment_manager._napcat_versions_cache = None
-                        self.deployment_manager._cache_timestamp = None
+                        self.napcat_deployer.clear_napcat_versions_cache()
                         break  # 跳出内层循环，重新获取版本
                     elif choice.upper() == 'R' and not using_fallback:
                         ui.print_warning("当前版本列表是最新的，无需刷新")
@@ -326,8 +325,8 @@ class NapCatDownloader(BaseDownloader):
         try:
             ui.print_info("正在启动NapCat安装程序...")
             
-            # 使用deployment_manager的方法
-            return self.deployment_manager.run_napcat_installer(installer_path)
+            # 使用napcat_deployer的方法
+            return self.napcat_deployer.run_napcat_installer(installer_path)
             
         except Exception as e:
             ui.print_error(f"运行NapCat安装程序失败：{str(e)}")
@@ -337,13 +336,12 @@ class NapCatDownloader(BaseDownloader):
     def check_installation(self) -> tuple[bool, str]:
         """检查NapCat是否已安装"""
         try:
-            # 使用deployment_manager的方法
-            napcat_path = self.deployment_manager.find_installed_napcat("")
+            # 使用napcat_deployer的方法
+            napcat_path = self.napcat_deployer.find_installed_napcat("")
             if napcat_path:
                 return True, f"NapCat 已安装，位置: {napcat_path}"
             else:
                 return False, "NapCat 未安装"
-                
         except Exception as e:
             ui.print_error(f"检查NapCat安装状态时发生错误：{str(e)}")
             logger.error("NapCat安装状态检查失败", error=str(e))

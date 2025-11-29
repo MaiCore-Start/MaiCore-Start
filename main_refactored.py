@@ -456,6 +456,29 @@ class MaiMaiLauncher:
             logger.error("组件下载异常", error=str(e))
             ui.pause()
 
+    def handle_refresh_daily_quote(self):
+        """处理刷新每日一言"""
+        ui.clear_screen()
+        ui.console.print("[🔄 刷新每日一言]", style=ui.colors["secondary"])
+        ui.console.print("==================")
+        
+        # 获取当前每日一言
+        old_quote = ui.menus.daily_quote
+        
+        # 刷新每日一言
+        new_quote = ui.menus.refresh_daily_quote()
+        
+        # 显示结果
+        ui.console.print(f"原每日一言: {old_quote}", style=ui.colors["info"])
+        ui.console.print(f"新每日一言: {new_quote}", style=ui.colors["success"])
+        
+        if old_quote != new_quote:
+            ui.print_success("每日一言刷新成功！")
+        else:
+            ui.print_info("每日一言未发生变化（可能是随机选择了相同内容）")
+        
+        ui.pause()
+
     def handle_process_status(self):
         """处理进程状态查看，支持自动刷新和交互式命令（最终优化版）。"""
         import msvcrt
@@ -682,6 +705,19 @@ class MaiMaiLauncher:
                     self.handle_process_status()
                 elif choice == "H":
                     self.handle_misc_menu()
+                elif choice == "R":
+                    # 直接在主菜单刷新每日一言
+                    old_quote = ui.menus.daily_quote
+                    new_quote = ui.menus.refresh_daily_quote()
+                    
+                    if old_quote != new_quote:
+                        ui.print_success("每日一言已刷新！")
+                    else:
+                        ui.print_info("每日一言未发生变化")
+                    
+                    # 短暂暂停后重新显示主菜单
+                    time.sleep(1)
+                    continue
                 else:
                     ui.print_error("无效选项")
                     ui.countdown(1)

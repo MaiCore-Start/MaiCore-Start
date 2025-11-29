@@ -1,8 +1,11 @@
-# -*- coding: utf-& -*-
+# -*- coding: utf-8 -*-
 """
 UI菜单模块
 负责定义和显示各种菜单
 """
+import json
+import random
+from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
@@ -16,6 +19,30 @@ class Menus:
         self.console = console
         self.colors = COLORS
         self.symbols = SYMBOLS
+        self.daily_quote = self._load_daily_quote()
+
+    def _load_daily_quote(self):
+        """从JSON文件加载随机每日一言"""
+        try:
+            # 获取项目根目录路径
+            project_root = Path(__file__).parent.parent.parent
+            quote_file = project_root / "data" / "Golden_sentence.json"
+            
+            with open(quote_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                quotes = data.get("goldenQuotes", [])
+                if quotes:
+                    return random.choice(quotes)["content"]
+                else:
+                    return "促进多元化艺术创作发展普及"
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            # 如果文件不存在或解析失败，返回默认文字
+            return "促进多元化艺术创作发展普及"
+
+    def refresh_daily_quote(self):
+        """刷新每日一言"""
+        self.daily_quote = self._load_daily_quote()
+        return self.daily_quote
 
     def print_header(self):
         """打印程序头部"""
@@ -31,7 +58,8 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
 """
         )
         self.console.print(header_text, style=self.colors["header"])
-        self.console.print("促进多元化艺术创作发展普及", style=self.colors["header"])
+        # 每日一言和刷新选项在同一行显示，用 | 分割
+        self.console.print(f"{self.daily_quote} | [R] {self.symbols['refresh']} 刷新", style=self.colors["header"])
         self.console.print(f"\n{self.symbols['rocket']} 麦麦核心启动器控制台", style=self.colors["header"])
         self.console.print("——————————", style=self.colors["border"])
         self.console.print("选择选项", style=self.colors["border"])
