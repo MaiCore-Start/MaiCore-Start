@@ -1,4 +1,4 @@
-# --- System & Virtual Environments ---
+git check-ignore -v path/to/file.pyc# --- System & Virtual Environments ---
 # Python virtual environment
 /venv/
 /env/
