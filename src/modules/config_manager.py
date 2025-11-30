@@ -682,6 +682,11 @@ class ConfigManager:
 
         files_to_open = []
         
+        # 始终打开.env文件（墨狐和麦麦都要打开）
+        env_file = os.path.join(bot_path, ".env")
+        if os.path.exists(env_file):
+            files_to_open.append(env_file)
+        
         # 确定要打开的配置文件
         if is_modern_config and bot_type == "MaiBot":
             model_config = os.path.join(bot_path, "config", "model_config.toml")
@@ -692,10 +697,6 @@ class ConfigManager:
             plugin_config = os.path.join(bot_path, "config", "plugin_config.toml")
             if os.path.exists(plugin_config):
                 files_to_open.append(plugin_config)
-        else:
-            env_file = os.path.join(bot_path, ".env")
-            if os.path.exists(env_file):
-                files_to_open.append(env_file)
         
         bot_config_file = os.path.join(bot_path, "config", "bot_config.toml")
         if os.path.exists(bot_config_file):

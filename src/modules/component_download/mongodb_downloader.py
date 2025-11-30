@@ -7,8 +7,10 @@ import platform
 import os
 import subprocess
 import ctypes
+import requests
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import structlog
 
 from ...ui.interface import ui
@@ -32,24 +34,204 @@ class MongoDBDownloader(BaseDownloader):
             self.arch = 'arm64'
         else:
             self.arch = 'x86_64'
+        
+        self.selected_version = None
+
+    def _get_default_versions(self) -> List[str]:
+        """获取默认版本列表"""
+        return [
+            "8.0.4",
+            "7.0.15",
+            "7.0.4",
+            "6.0.19",
+            "5.0.30"
+        ]
+
+    def fetch_versions(self) -> List[str]:
+        """从GitHub API获取版本列表，带重试机制"""
+        import time
+        
+        url = "https://api.github.com/repos/mongodb/mongo/tags"
+        max_retries = 3
+        retry_delay = 5  # 秒
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    ui.print_info(f"重试获取MongoDB版本列表... (尝试 {attempt + 1}/{max_retries})")
+                else:
+                    ui.print_info("正在从GitHub获取版本列表...")
+                
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                tags = response.json()
+                versions = []
+                for tag in tags:
+                    name = tag.get("name", "")
+                    # 匹配 rX.Y.Z 格式
+                    match = re.match(r"^r(\d+\.\d+\.\d+)$", name)
+                    if match:
+                        versions.append(match.group(1))
+                
+                # 简单的版本排序 (倒序)
+                try:
+                    versions.sort(key=lambda v: [int(x) for x in v.split('.')], reverse=True)
+                except Exception:
+                    pass # 如果排序失败，保持原样
+                    
+                return versions
+                
+            except Exception as e:
+                error_msg = str(e)
+                if attempt < max_retries - 1:
+                    # 还有重试机会
+                    ui.print_warning(f"获取版本列表失败: {error_msg}，等待 {retry_delay} 秒后重试...")
+                    logger.warning("获取MongoDB版本列表失败，准备重试", 
+                                 error=error_msg,
+                                 attempt=attempt + 1,
+                                 max_retries=max_retries)
+                    time.sleep(retry_delay)
+                    retry_delay *= 1.5  # 指数退避
+                else:
+                    # 最后一次尝试失败
+                    ui.print_error(f"获取MongoDB版本列表失败（已重试{max_retries}次）：{error_msg}")
+                    logger.error("获取MongoDB版本列表失败，重试耗尽", 
+                               error=error_msg,
+                               total_attempts=max_retries)
+                    ui.print_info("将使用默认版本列表")
+                    return self._get_default_versions()
+        
+        # 理论上不会到这里，但作为保险返回默认版本
+        return self._get_default_versions()
+
+    def select_version(self) -> Optional[str]:
+        """让用户选择版本"""
+        using_fallback = False
+        
+        while True:  # 外层循环，支持重新获取
+            versions = self.fetch_versions()
+            
+            if not versions:
+                ui.print_warning("无法获取版本列表，将使用默认版本 7.0.4")
+                return "7.0.4"
+
+            # 检查是否是默认版本列表
+            default_versions = self._get_default_versions()
+            using_fallback = (versions == default_versions)
+            
+            # 显示版本选择菜单
+            ui.clear_screen()
+            ui.components.show_title("选择MongoDB版本", symbol="🍃")
+            
+            # 创建版本表格
+            from rich.table import Table
+            table = Table(
+                show_header=True,
+                header_style=ui.colors["table_header"],
+                title="[bold]MongoDB 可用版本[/bold]",
+                title_style=ui.colors["primary"],
+                border_style=ui.colors["border"],
+                show_lines=True
+            )
+            table.add_column("选项", style="cyan", width=6, justify="center")
+            table.add_column("版本", style=ui.colors["primary"], width=15)
+            table.add_column("推荐度", style="yellow", width=12, justify="center")
+            table.add_column("说明", style="green")
+            
+            # 只显示前10个版本
+            display_versions = versions[:10]
+            
+            # 显示版本信息
+            for i, version in enumerate(display_versions):
+                # 判断推荐度
+                version_parts = [int(x) for x in version.split('.')]
+                major = version_parts[0]
+                
+                if i == 0:
+                    recommend = "⭐⭐⭐"
+                    desc = "最新稳定版"
+                elif major >= 7:
+                    recommend = "⭐⭐"
+                    desc = "推荐版本"
+                elif major >= 6:
+                    recommend = "⭐"
+                    desc = "稳定版本"
+                else:
+                    recommend = ""
+                    desc = "旧版本"
+                
+                table.add_row(
+                    f"[{i + 1}]",
+                    version,
+                    recommend,
+                    desc
+                )
+            
+            ui.console.print(table)
+            
+            # 根据是否使用默认版本显示不同提示
+            if using_fallback:
+                ui.console.print("\n[yellow]⚠ 由于网络问题，当前显示的是默认版本列表[/yellow]", style=ui.colors["warning"])
+                ui.console.print("[Enter] 使用默认版本(第一个选项)  [R] 重新获取版本列表  [Q] 取消下载", style=ui.colors["info"])
+            else:
+                ui.console.print("\n[Enter] 使用默认版本(第一个选项)  [Q] 取消下载", style=ui.colors["info"])
+            
+            ui.console.print("提示：推荐使用最新稳定版，兼容性更好", style=ui.colors["success"])
+            
+            while True:  # 内层循环，处理用户选择
+                choice = ui.get_input(f"请选择版本序号 (1-{len(display_versions)}，直接回车使用默认): ").strip()
+                
+                # 如果用户直接按回车，使用默认版本(第一个选项)
+                if choice == "":
+                    ui.print_info(f"使用默认版本: {display_versions[0]}")
+                    return display_versions[0]
+                
+                if choice.upper() == 'Q':
+                    ui.print_info("用户取消MongoDB下载")
+                    return None
+                
+                # 如果是默认版本列表，允许重新获取
+                if choice.upper() == 'R' and using_fallback:
+                    ui.print_info("正在重新获取版本列表...")
+                    break  # 跳出内层循环，重新获取版本
+                elif choice.upper() == 'R' and not using_fallback:
+                    ui.print_warning("当前版本列表是最新的，无需刷新")
+                    continue
+                
+                try:
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(display_versions):
+                        selected = display_versions[idx]
+                        ui.print_info(f"已选择版本: {selected}")
+                        return selected
+                    else:
+                        ui.print_error(f"无效的序号，请输入 1-{len(display_versions)} 之间的数字")
+                except ValueError:
+                    if using_fallback:
+                        ui.print_error("请输入有效的数字、直接回车使用默认版本、或输入 R 重新获取")
+                    else:
+                        ui.print_error("请输入有效的数字或直接回车使用默认版本")
     
-    def get_download_url(self) -> str:
+    def get_download_url(self, version: Optional[str] = None) -> str:
         """获取MongoDB下载链接"""
-        version = "7.0.4"
+        if not version:
+            version = self.selected_version or "7.0.4"
         
         if self.system == 'windows':
-            return f"https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-{version}.msi"
+            # MongoDB 7.0+ MSI on Windows usually requires -signed suffix
+            return f"https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-{version}-signed.msi"
         elif self.system == 'darwin':  # macOS
             return f"https://fastdl.mongodb.org/macos/mongodb-macos-{self.arch}-{version}.dmg"
         else:  # Linux
             return f"https://fastdl.mongodb.org/linux/mongodb-linux-{self.arch}-{version}.tgz"
     
-    def get_filename(self) -> str:
+    def get_filename(self, version: Optional[str] = None) -> str:
         """获取下载文件名"""
-        version = "7.0.4"
+        if not version:
+            version = self.selected_version or "7.0.4"
         
         if self.system == 'windows':
-            return f"mongodb-windows-x86_64-{version}.msi"
+            return f"mongodb-windows-x86_64-{version}-signed.msi"
         elif self.system == 'darwin':
             return f"mongodb-macos-{self.arch}-{version}.dmg"
         else:
@@ -58,9 +240,19 @@ class MongoDBDownloader(BaseDownloader):
     def download_and_install(self, temp_dir: Path) -> bool:
         """下载并安装MongoDB"""
         try:
+            # 选择版本
+            self.selected_version = self.select_version()
+            
+            # 如果用户取消选择，返回True表示跳过
+            if self.selected_version is None:
+                ui.print_info("已跳过MongoDB下载")
+                return True
+            
+            ui.print_info(f"已选择版本: {self.selected_version}")
+
             # 获取下载链接和文件名
-            download_url = self.get_download_url()
-            filename = self.get_filename()
+            download_url = self.get_download_url(self.selected_version)
+            filename = self.get_filename(self.selected_version)
             file_path = temp_dir / filename
             
             ui.print_info(f"正在下载 {self.name}...")

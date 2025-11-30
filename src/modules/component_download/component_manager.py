@@ -162,9 +162,11 @@ class ComponentManager:
                 ui.print_success(f"✅ {info['name']} 下载并安装完成")
                 logger.info("组件下载成功", component=component_key)
                 
-                # 询问是否删除安装包
-                if ui.confirm("是否删除安装包以节省空间？"):
-                    self._cleanup_installer(component_key, temp_dir)
+                # NapCat不提供删除选项，因为文件已经在用户指定的位置
+                if component_key != 'napcat':
+                    # 询问是否删除安装包
+                    if ui.confirm("是否删除安装包以节省空间？"):
+                        self._cleanup_installer(component_key, temp_dir)
                 
                 return True
             else:
@@ -214,8 +216,14 @@ class ComponentManager:
             try:
                 # 检查文件是否存在
                 if not file_path.exists():
-                    ui.print_info(f"文件不存在，已跳过：{file_path.name}")
                     return
+                
+                # 尝试修改文件权限（Windows）
+                if os.name == 'nt':
+                    try:
+                        os.chmod(str(file_path), stat.S_IWRITE)
+                    except:
+                        pass
                 
                 # 尝试普通删除
                 file_path.unlink()
@@ -228,42 +236,53 @@ class ComponentManager:
                     ui.print_info(f"文件被占用，尝试强制删除 ({attempt + 1}/{max_retries}): {file_path.name}")
                     
                     try:
-                        # Windows下使用del命令强制删除
+                        time.sleep(retry_delay)
+                        
+                        # Windows下使用PowerShell强制删除
                         if os.name == 'nt':
-                            # 尝试修改文件权限
-                            file_path.chmod(stat.S_IWRITE)
-                            # 使用del命令强制删除
-                            subprocess.run(['del', '/F', '/Q', str(file_path)],
-                                         shell=True, capture_output=True)
+                            # 使用PowerShell的Remove-Item -Force
+                            cmd = f'Remove-Item -Path "{file_path}" -Force -ErrorAction SilentlyContinue'
+                            result = subprocess.run(
+                                ['powershell', '-Command', cmd],
+                                capture_output=True,
+                                text=True,
+                                timeout=10
+                            )
                         else:
                             # Linux/macOS下使用rm命令强制删除
-                            file_path.chmod(0o777)
+                            try:
+                                os.chmod(str(file_path), 0o777)
+                            except:
+                                pass
                             subprocess.run(['rm', '-f', str(file_path)],
-                                         capture_output=True)
+                                         capture_output=True,
+                                         timeout=10)
                         
                         # 等待一下再检查
-                        time.sleep(retry_delay)
+                        time.sleep(retry_delay * 0.5)
                         
-                        # 再次尝试删除
-                        if file_path.exists():
-                            file_path.unlink()
+                        # 检查是否删除成功
+                        if not file_path.exists():
+                            ui.print_info(f"已强制删除：{file_path.name}")
+                            return
                         
-                        ui.print_info(f"已强制删除：{file_path.name}")
-                        return
-                        
+                    except subprocess.TimeoutExpired:
+                        ui.print_warning(f"删除命令超时 ({attempt + 1}/{max_retries})")
                     except Exception as force_error:
                         ui.print_warning(f"强制删除失败 ({attempt + 1}/{max_retries}): {str(force_error)}")
-                        time.sleep(retry_delay)
-                        continue
+                    
+                    time.sleep(retry_delay)
                 else:
-                    ui.print_error(f"无法删除文件，已达到最大重试次数：{file_path.name}")
+                    ui.print_warning(f"无法删除文件（文件可能正在使用中）：{file_path.name}")
+                    ui.print_info("建议稍后手动删除该文件")
                     
             except Exception as e:
                 if attempt < max_retries - 1:
                     ui.print_warning(f"删除文件失败，重试中 ({attempt + 1}/{max_retries}): {str(e)}")
                     time.sleep(retry_delay)
                 else:
-                    ui.print_error(f"删除文件最终失败：{file_path.name}, 错误: {str(e)}")
+                    ui.print_warning(f"无法删除文件：{file_path.name}")
+                    ui.print_info("建议稍后手动删除该文件")
     
     def download_multiple_components(self, component_keys: List[str]) -> Dict[str, bool]:
         """批量下载组件"""

@@ -12,7 +12,7 @@ import structlog
 
 from ...ui.interface import ui
 from .base_downloader import BaseDownloader
-from ...modules.deployment import deployment_manager
+from ...modules.deployment_core.napcat_deployer import NapCatDeployer
 
 logger = structlog.get_logger(__name__)
 
@@ -22,19 +22,48 @@ class NapCatDownloader(BaseDownloader):
     
     def __init__(self):
         super().__init__("NapCat")
-        self.deployment_manager = deployment_manager
+        self.napcat_deployer = NapCatDeployer()
     
     def get_napcat_versions(self) -> List[Dict]:
         """获取NapCat版本列表"""
-        try:
-            # 使用deployment_manager的方法
-            versions = self.deployment_manager.get_napcat_versions()
-            return versions
-        except Exception as e:
-            ui.print_error(f"获取NapCat版本列表失败：{str(e)}")
-            logger.error("获取NapCat版本列表失败", error=str(e))
-            # 返回默认版本
-            return self._get_default_versions()
+        import time
+        
+        # 重试配置
+        max_retries = 3
+        retry_delay = 5  # 秒
+        
+        for attempt in range(max_retries):
+            try:
+                # 使用deployment_manager的方法
+                if attempt > 0:
+                    ui.print_info(f"重试获取NapCat版本列表... (尝试 {attempt + 1}/{max_retries})")
+                
+                versions = self.napcat_deployer.get_napcat_versions()
+                return versions
+                
+            except Exception as e:
+                error_msg = str(e)
+                if attempt < max_retries - 1:
+                    # 还有重试机会
+                    ui.print_warning(f"获取版本列表失败: {error_msg}，等待 {retry_delay} 秒后重试...")
+                    logger.warning("获取NapCat版本列表失败，准备重试", 
+                                 error=error_msg,
+                                 attempt=attempt + 1,
+                                 max_retries=max_retries)
+                    time.sleep(retry_delay)
+                    retry_delay *= 1.5  # 指数退避
+                else:
+                    # 最后一次尝试失败
+                    ui.print_error(f"获取NapCat版本列表失败（已重试{max_retries}次）：{error_msg}")
+                    logger.error("获取NapCat版本列表失败，重试耗尽", 
+                               error=error_msg,
+                               total_attempts=max_retries)
+                    ui.print_info("将使用默认版本列表")
+                    # 返回默认版本
+                    return self._get_default_versions()
+        
+        # 理论上不会到这里，但作为保险返回默认版本
+        return self._get_default_versions()
     
     def _get_default_versions(self) -> List[Dict]:
         """获取默认版本列表"""
@@ -67,77 +96,110 @@ class NapCatDownloader(BaseDownloader):
     
     def select_version(self) -> Optional[Dict]:
         """选择NapCat版本"""
-        try:
-            # 获取版本列表
-            versions = self.get_napcat_versions()
-            
-            if not versions:
-                ui.print_error("未找到可用的NapCat版本")
-                return None
-            
-            # 显示版本选择菜单
-            ui.clear_screen()
-            ui.components.show_title("选择NapCat版本", symbol="🐱")
-            
-            # 创建版本表格
-            from rich.table import Table
-            table = Table(
-                show_header=True,
-                header_style=ui.colors["table_header"],
-                title="[bold]NapCat 可用版本[/bold]",
-                title_style=ui.colors["primary"],
-                border_style=ui.colors["border"],
-                show_lines=True
-            )
-            table.add_column("选项", style="cyan", width=6, justify="center")
-            table.add_column("版本", style=ui.colors["primary"], width=20)
-            table.add_column("类型", style="yellow", width=15, justify="center")
-            table.add_column("说明", style="green")
-            
-            # 显示版本信息
-            for i, version in enumerate(versions, 1):
-                # 提取版本类型
-                version_type = "基础版" if "shell" in version["name"] and "onekey" not in version["name"] else \
-                               "有头一键包" if "framework" in version["name"] else \
-                               "无头一键包" if "shell" in version["name"] and "onekey" in version["name"] else "未知"
+        # 是否使用默认版本（重试耗尽的标记）
+        using_fallback = False
+        
+        while True:  # 外层循环，支持重新获取
+            try:
+                # 获取版本列表
+                versions = self.get_napcat_versions()
                 
-                table.add_row(
-                    f"[{i}]",
-                    version["display_name"],
-                    version_type,
-                    version["description"]
-                )
-            
-            ui.console.print(table)
-            ui.console.print("\n[Enter] 使用默认版本(第一个选项)  [Q] 跳过NapCat下载", style=ui.colors["info"])
-            ui.console.print("提示：推荐使用基础版，适合大多数用户", style=ui.colors["success"])
-            
-            while True:
-                choice = ui.get_input("请选择NapCat版本(直接回车使用默认版本)：").strip()
-                
-                # 如果用户直接按回车，使用默认版本(第一个选项)
-                if choice == "":
-                    ui.print_info("使用默认版本: " + versions[0]["display_name"])
-                    return versions[0]
-                
-                if choice.upper() == 'Q':
+                if not versions:
+                    ui.print_error("未找到可用的NapCat版本")
                     return None
                 
-                try:
-                    choice_num = int(choice)
-                    if 1 <= choice_num <= len(versions):
-                        selected_version = versions[choice_num - 1]
-                        ui.print_info("已选择版本: " + selected_version["display_name"])
-                        return selected_version
-                    else:
-                        ui.print_error("无效选项，请重新选择")
-                except ValueError:
-                    ui.print_error("请输入有效的数字或直接回车使用默认版本")
+                # 检查是否是默认版本（表示获取失败）
+                # 默认版本的特征：只有3个版本且都是 v4.8.90，且都是拼接的URL
+                if (len(versions) == 3 and 
+                    all(v.get("version") == "v4.8.90" for v in versions) and
+                    all("github.com/NapNeko/NapCatQQ/releases/download/v4.8.90" in v.get("download_url", "") for v in versions)):
+                    using_fallback = True
+                else:
+                    using_fallback = False
+                
+                # 显示版本选择菜单
+                ui.clear_screen()
+                ui.components.show_title("选择NapCat版本", symbol="🐱")
+                
+                # 创建版本表格
+                from rich.table import Table
+                table = Table(
+                    show_header=True,
+                    header_style=ui.colors["table_header"],
+                    title="[bold]NapCat 可用版本[/bold]",
+                    title_style=ui.colors["primary"],
+                    border_style=ui.colors["border"],
+                    show_lines=True
+                )
+                table.add_column("选项", style="cyan", width=6, justify="center")
+                table.add_column("版本", style=ui.colors["primary"], width=20)
+                table.add_column("类型", style="yellow", width=15, justify="center")
+                table.add_column("说明", style="green")
+                
+                # 显示版本信息
+                for i, version in enumerate(versions, 1):
+                    # 提取版本类型
+                    version_type = "基础版" if "shell" in version["name"] and "onekey" not in version["name"] else \
+                                   "有头一键包" if "framework" in version["name"] else \
+                                   "无头一键包" if "shell" in version["name"] and "onekey" in version["name"] else "未知"
                     
-        except Exception as e:
-            ui.print_error(f"选择NapCat版本时发生错误：{str(e)}")
-            logger.error("NapCat版本选择失败", error=str(e))
-            return None
+                    table.add_row(
+                        f"[{i}]",
+                        version["display_name"],
+                        version_type,
+                        version["description"]
+                    )
+                
+                ui.console.print(table)
+                
+                # 根据是否使用默认版本显示不同提示
+                if using_fallback:
+                    ui.console.print("\n[yellow]⚠ 由于网络问题，当前显示的是默认版本列表[/yellow]", style=ui.colors["warning"])
+                    ui.console.print("[Enter] 使用默认版本(第一个选项)  [R] 重新获取版本列表  [Q] 跳过NapCat下载", style=ui.colors["info"])
+                else:
+                    ui.console.print("\n[Enter] 使用默认版本(第一个选项)  [Q] 跳过NapCat下载", style=ui.colors["info"])
+                
+                ui.console.print("提示：推荐使用基础版，适合大多数用户", style=ui.colors["success"])
+                
+                while True:  # 内层循环，处理用户选择
+                    choice = ui.get_input("请选择NapCat版本(直接回车使用默认版本)：").strip()
+                    
+                    # 如果用户直接按回车，使用默认版本(第一个选项)
+                    if choice == "":
+                        ui.print_info("使用默认版本: " + versions[0]["display_name"])
+                        return versions[0]
+                    
+                    if choice.upper() == 'Q':
+                        return None
+                    
+                    # 如果是默认版本列表，允许重新获取
+                    if choice.upper() == 'R' and using_fallback:
+                        ui.print_info("正在重新获取版本列表...")
+                        # 清除缓存，强制刷新
+                        self.napcat_deployer.clear_napcat_versions_cache()
+                        break  # 跳出内层循环，重新获取版本
+                    elif choice.upper() == 'R' and not using_fallback:
+                        ui.print_warning("当前版本列表是最新的，无需刷新")
+                        continue
+                    
+                    try:
+                        choice_num = int(choice)
+                        if 1 <= choice_num <= len(versions):
+                            selected_version = versions[choice_num - 1]
+                            ui.print_info("已选择版本: " + selected_version["display_name"])
+                            return selected_version
+                        else:
+                            ui.print_error("无效选项，请重新选择")
+                    except ValueError:
+                        if using_fallback:
+                            ui.print_error("请输入有效的数字、直接回车使用默认版本、或输入 R 重新获取")
+                        else:
+                            ui.print_error("请输入有效的数字或直接回车使用默认版本")
+                        
+            except Exception as e:
+                ui.print_error(f"选择NapCat版本时发生错误：{str(e)}")
+                logger.error("NapCat版本选择失败", error=str(e))
+                return None
     
     def download_and_install(self, temp_dir: Path) -> bool:
         """下载并安装NapCat"""
@@ -148,9 +210,53 @@ class NapCatDownloader(BaseDownloader):
                 ui.print_info("已跳过NapCat下载")
                 return True
             
+            # 让用户指定下载目标路径
+            # 获取用户下载文件夹路径
+            import os
+            user_downloads = Path.home() / "Downloads" / "NapCat"
+            
+            ui.print_info("\n请指定NapCat的下载目标路径")
+            ui.print_info("提示：建议使用绝对路径，例如: D:\\NapCat")
+            ui.print_info(f"默认路径: {user_downloads}")
+            
+            while True:
+                target_path_str = ui.get_input(f"请输入目标路径（留空使用默认路径）：").strip()
+                
+                if not target_path_str:
+                    # 使用默认路径（用户下载文件夹）
+                    target_dir = user_downloads
+                    ui.print_info(f"使用默认路径: {target_dir}")
+                else:
+                    target_dir = Path(target_path_str)
+                
+                # 检查路径是否有效
+                try:
+                    # 确保父目录存在
+                    target_dir.parent.mkdir(parents=True, exist_ok=True)
+                    # 创建目标目录
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    break
+                except Exception as e:
+                    ui.print_error(f"无效的路径或无法创建目录: {str(e)}")
+                    ui.print_info("请重新输入有效的路径")
+            
             # 获取下载链接
             download_url = selected_version["download_url"]
             asset_name = selected_version.get("asset_name", "NapCat.zip")
+            
+            # 在目标目录下创建NapCat子文件夹，处理同名冲突
+            base_folder_name = "NapCat"
+            napcat_folder = target_dir / base_folder_name
+            counter = 1
+            
+            # 如果文件夹已存在，添加序号
+            while napcat_folder.exists():
+                napcat_folder = target_dir / f"{base_folder_name}({counter})"
+                counter += 1
+            
+            # 创建NapCat子文件夹
+            napcat_folder.mkdir(parents=True, exist_ok=True)
+            ui.print_info(f"将解压到: {napcat_folder}")
             
             # 创建临时文件
             with tempfile.TemporaryDirectory() as temp_download_dir:
@@ -162,43 +268,38 @@ class NapCatDownloader(BaseDownloader):
                 if not self.download_file(download_url, str(temp_file)):
                     return False
                 
-                # 解压到临时目录
-                extract_dir = temp_dir / "NapCat_extract"
-                extract_dir.mkdir(exist_ok=True)
-                
-                ui.print_info("正在解压NapCat...")
+                ui.print_info("正在解压NapCat到目标目录...")
                 
                 if asset_name.endswith('.zip'):
                     import zipfile
                     with zipfile.ZipFile(temp_file, 'r') as zip_ref:
-                        zip_ref.extractall(extract_dir)
+                        zip_ref.extractall(napcat_folder)
                 else:
                     # 如果不是zip文件，直接复制
                     import shutil
-                    shutil.copy2(temp_file, extract_dir)
+                    shutil.copy2(temp_file, napcat_folder)
                 
-                ui.print_success("NapCat下载完成")
-                logger.info("NapCat下载成功", version=selected_version['display_name'], path=str(extract_dir))
+                ui.print_success(f"NapCat下载完成！文件位置: {napcat_folder}")
+                logger.info("NapCat下载成功", version=selected_version['display_name'], path=str(napcat_folder))
                 
                 # 查找NapCat安装程序
                 installer_exe = None
-                napcat_exe = None
                 
-                for root, dirs, files in os.walk(extract_dir):
+                for root, dirs, files in os.walk(napcat_folder):
                     for file in files:
                         # 查找安装程序
                         if file.lower() == 'napcatinstaller.exe':
                             installer_exe = os.path.join(root, file)
-                        # 查找NapCat可执行文件
-                        elif file.lower().endswith('.exe') and 'napcat' in file.lower():
-                            napcat_exe = os.path.join(root, file)
+                            break
+                    if installer_exe:
+                        break
                 
                 # 如果找到安装程序，询问是否自动安装
                 if installer_exe and os.path.exists(installer_exe):
-                    ui.print_info(f"找到NapCat安装程序: {installer_exe}")
+                    ui.print_info(f"\n找到NapCat安装程序: {installer_exe}")
                     
                     if ui.confirm("是否自动运行NapCat安装程序？"):
-                        installer_success = self._run_installer(installer_exe, extract_dir)
+                        installer_success = self._run_installer(installer_exe, napcat_folder)
                         if installer_success:
                             ui.print_success("NapCat安装程序已成功启动")
                             return True
@@ -208,12 +309,10 @@ class NapCatDownloader(BaseDownloader):
                     else:
                         ui.print_info("您可以稍后手动运行安装程序")
                         ui.print_info(f"安装程序位置: {installer_exe}")
-                        ui.print_info("安装完成后，系统将自动检测NapCat位置")
                         return True
                 else:
-                    ui.print_warning("未找到NapCat安装程序")
-                    ui.print_info(f"NapCat文件已解压到: {extract_dir}")
-                    ui.print_info("请手动处理NapCat文件")
+                    ui.print_info("\n文件已解压完成")
+                    ui.print_info(f"文件位置: {napcat_folder}")
                     return True
                 
         except Exception as e:
@@ -226,8 +325,8 @@ class NapCatDownloader(BaseDownloader):
         try:
             ui.print_info("正在启动NapCat安装程序...")
             
-            # 使用deployment_manager的方法
-            return self.deployment_manager.run_napcat_installer(installer_path)
+            # 使用napcat_deployer的方法
+            return self.napcat_deployer.run_napcat_installer(installer_path)
             
         except Exception as e:
             ui.print_error(f"运行NapCat安装程序失败：{str(e)}")
@@ -237,13 +336,12 @@ class NapCatDownloader(BaseDownloader):
     def check_installation(self) -> tuple[bool, str]:
         """检查NapCat是否已安装"""
         try:
-            # 使用deployment_manager的方法
-            napcat_path = self.deployment_manager.find_installed_napcat("")
+            # 使用napcat_deployer的方法
+            napcat_path = self.napcat_deployer.find_installed_napcat("")
             if napcat_path:
                 return True, f"NapCat 已安装，位置: {napcat_path}"
             else:
                 return False, "NapCat 未安装"
-                
         except Exception as e:
             ui.print_error(f"检查NapCat安装状态时发生错误：{str(e)}")
             logger.error("NapCat安装状态检查失败", error=str(e))

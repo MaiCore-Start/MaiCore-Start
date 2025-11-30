@@ -324,7 +324,7 @@ class MaiMaiLauncher:
         """处理杂项菜单"""
         while True:
             ui.show_misc_menu()
-            choice = ui.get_choice("请选择操作", ["A", "B", "C", "Q"])
+            choice = ui.get_choice("请选择操作", ["A", "B", "C", "D", "Q"])
             
             if choice == "Q":
                 break
@@ -334,6 +334,8 @@ class MaiMaiLauncher:
                 self.handle_program_settings()
             elif choice == "C":
                 self.handle_component_download()
+            elif choice == "D":
+                self.handle_instance_statistics()
 
     def handle_program_settings(self):
         """处理程序设置"""
@@ -455,6 +457,131 @@ class MaiMaiLauncher:
             ui.print_error(f"组件下载过程出错：{str(e)}")
             logger.error("组件下载异常", error=str(e))
             ui.pause()
+
+    def handle_instance_statistics(self):
+        """处理实例运行数据查看"""
+        try:
+            ui.clear_screen()
+            ui.console.print("[📊 实例运行数据查看]", style=ui.colors["secondary"])
+            ui.console.print("==================")
+            
+            ui.console.print("请选择数据来源方式（此功能目前仅支持MaiBot实例）：", style=ui.colors["info"])
+            ui.console.print(" [A] 从已配置的实例中选择", style=ui.colors["success"])
+            ui.console.print(" [B] 直接输入实例路径", style=ui.colors["warning"])
+            ui.console.print(" [Q] 返回上级菜单", style=ui.colors["exit"])
+            
+            choice = ui.get_choice("请选择操作", ["A", "B", "Q"])
+            
+            if choice == "Q":
+                return
+            elif choice == "A":
+                # 从已配置的实例中选择
+                config = config_mgr.select_configuration()
+                if not config:
+                    ui.pause()
+                    return
+                
+                # 检查是否为MaiBot
+                bot_type = config.get("bot_type", "")
+                if bot_type != "MaiBot":
+                    ui.print_warning("此功能目前仅支持MaiBot实例")
+                    ui.pause()
+                    return
+                
+                # 导入并使用统计管理器
+                try:
+                    from src.modules.instance_statistics import instance_statistics_manager
+                    success = instance_statistics_manager.open_statistics_page(config=config)
+                    if success:
+                        ui.print_success("统计页面已在浏览器中打开")
+                    else:
+                        ui.print_error("打开统计页面失败")
+                except ImportError as e:
+                    ui.print_error(f"无法导入统计模块：{str(e)}")
+                    logger.error("导入统计模块失败", error=str(e))
+                
+                ui.pause()
+                
+            elif choice == "B":
+                # 直接输入实例路径
+                instance_path = ui.get_input("请输入MaiBot实例路径：")
+                if not instance_path:
+                    ui.print_warning("未输入路径")
+                    ui.pause()
+                    return
+                
+                # 验证路径是否存在
+                if not os.path.exists(instance_path):
+                    ui.print_error(f"路径不存在：{instance_path}")
+                    ui.pause()
+                    return
+                
+                # 检查是否为有效的MaiBot实例
+                if not self._validate_maibot_instance(instance_path):
+                    ui.print_warning("该路径似乎不是有效的MaiBot实例")
+                    if not ui.confirm("是否继续生成统计页面？"):
+                        return
+                
+                # 导入并使用统计管理器
+                try:
+                    from src.modules.instance_statistics import instance_statistics_manager
+                    success = instance_statistics_manager.open_statistics_page(instance_path=instance_path)
+                    if success:
+                        ui.print_success("统计页面已在浏览器中打开")
+                    else:
+                        ui.print_error("打开统计页面失败")
+                except ImportError as e:
+                    ui.print_error(f"无法导入统计模块：{str(e)}")
+                    logger.error("导入统计模块失败", error=str(e))
+                
+                ui.pause()
+                
+        except Exception as e:
+            ui.print_error(f"查看实例运行数据过程出错：{str(e)}")
+            logger.error("实例运行数据查看异常", error=str(e))
+            ui.pause()
+    
+    def _validate_maibot_instance(self, instance_path: str) -> bool:
+        """验证是否为有效的MaiBot实例"""
+        try:
+            # 检查关键文件是否存在
+            key_files = ["bot.py", "main.py", "package.json"]
+            for file in key_files:
+                if not os.path.exists(os.path.join(instance_path, file)):
+                    return False
+            
+            # 检查是否有MaiBot相关的目录结构
+            subdirs = os.listdir(instance_path)
+            maibot_indicators = ["src", "plugins", "config", "adapter"]
+            has_maibot_structure = any(indicator in subdirs for indicator in maibot_indicators)
+            
+            return has_maibot_structure
+            
+        except Exception:
+            return False
+
+    def handle_refresh_daily_quote(self):
+        """处理刷新每日一言"""
+        ui.clear_screen()
+        ui.console.print("[🔄 刷新每日一言]", style=ui.colors["secondary"])
+        ui.console.print("==================")
+        
+        # 获取当前每日一言
+        old_quote = ui.menus.daily_quote
+        
+        # 刷新每日一言
+        new_quote = ui.menus.refresh_daily_quote()
+        
+        # 显示结果
+        ui.console.print(f"原每日一言: {old_quote}", style=ui.colors["info"])
+        ui.console.print(f"新每日一言: {new_quote}", style=ui.colors["success"])
+        
+        if old_quote != new_quote:
+            ui.print_success("每日一言刷新成功！")
+        else:
+            ui.print_info("每日一言未发生变化（可能是随机选择了相同内容）")
+        
+        ui.pause()
 
     def handle_process_status(self):
         """处理进程状态查看，支持自动刷新和交互式命令（最终优化版）。"""
@@ -682,6 +809,19 @@ class MaiMaiLauncher:
                     self.handle_process_status()
                 elif choice == "H":
                     self.handle_misc_menu()
+                elif choice == "R":
+                    # 直接在主菜单刷新每日一言
+                    old_quote = ui.menus.daily_quote
+                    new_quote = ui.menus.refresh_daily_quote()
+                    
+                    if old_quote != new_quote:
+                        ui.print_success("每日一言已刷新！")
+                    else:
+                        ui.print_info("每日一言未发生变化")
+                    
+                    # 短暂暂停后重新显示主菜单
+                    time.sleep(1)
+                    continue
                 else:
                     ui.print_error("无效选项")
                     ui.countdown(1)
