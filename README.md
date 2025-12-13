@@ -69,8 +69,7 @@
 
 | 版本           | 发布日期 | 状态      | 下载链接                                                                            |
 | :------------- | :------- | :-------- | :---------------------------------------------------------------------------------- |
-| **V4.1.0-dev** | 2025-01  | 🚧 开发中 | [📦 下载](https://github.com/MaiCore-Start/MaiCore-Start/releases)                  |
-| **V4.0.0.3**   | 2024-12  | ✅ 稳定版 | [📦 下载](https://github.com/MaiCore-Start/MaiCore-Start/releases/tag/v4.0.0.3-dev) |
+| **V4.1.1-beta** | 2025-01  | 🚧 开发中 | [📦 下载](https://github.com/MaiCore-Start/MaiCore-Start/releases)                  |
 
 </div>
 
@@ -88,7 +87,7 @@ mcs410b
 git clone https://github.com/MaiCore-Start/MaiCore-Start.git
 cd MaiCore-Start
 pip install -r requirements.txt
-python main_refactored.py
+python run.py
 ```
 
 ### ⚡ 快速上手（5分钟教程）
@@ -478,7 +477,7 @@ graph TD
 
 ## 📋 更新日志
 
-### 🔥 V4.1.0-dev (开发中)
+### 🔥 V4.1.0-beta
 
 **架构升级：**
 
@@ -503,6 +502,15 @@ graph TD
 - 🎯 配置验证更完善
 
 ---
+
+#### V4.1.1-beta
+
+**新增代理功能**
+- 多代理预设
+- 一键测试代理
+
+**更改Windows通知依赖**
+- 无需再依赖本地编译
 
 <details>
 <summary><strong>📚 查看历史版本</strong></summary>
