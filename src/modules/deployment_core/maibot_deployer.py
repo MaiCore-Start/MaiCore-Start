@@ -29,68 +29,6 @@ class MaiBotDeployer(BaseDeployer):
     
     def install_bot(self, deploy_config: Dict) -> Optional[str]:
         """
-        安装MaiBot主体，支持自定义序列号和昵称
-        """
-        ui.console.print("\n[📦 第一步：安装MaiBot]", style=ui.colors["primary"])
-        selected_version = deploy_config["selected_version"]
-        install_dir = deploy_config["install_dir"]
-
-        # 让用户输入序列号（ASCII校验）
-        while True:
-            serial = ui.console.input("请输入序列号 (仅限ASCII字符): ").strip()
-            if serial and all(ord(c) < 128 for c in serial):
-                break
-            ui.print_warning("序列号必须为ASCII字符，请重新输入！")
-        deploy_config["serial"] = serial
-
-        # 让用户输入昵称
-        while True:
-            nickname = ui.console.input("请输入昵称 (用于文件夹命名): ").strip()
-            if nickname:
-                break
-            ui.print_warning("昵称不能为空，请重新输入！")
-        deploy_config["nickname"] = nickname
-
-        # 创建昵称文件夹
-        nickname_dir = os.path.join(install_dir, nickname)
-        os.makedirs(nickname_dir, exist_ok=True)
-        deploy_config["nickname_dir"] = nickname_dir
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # 下载源码
-            ui.print_info("正在下载MaiBot源码...")
-            download_url = selected_version["download_url"]
-            archive_path = os.path.join(temp_dir, f"{selected_version['name']}.zip")
-
-            # 显示进度条下载
-            if not self.download_file(download_url, archive_path):
-                ui.print_error("MaiBot下载失败")
-                return None
-
-            # 解压到临时目录
-            ui.print_info("正在解压MaiBot...")
-            if not self.extract_archive(archive_path, temp_dir):
-                ui.print_error("MaiBot解压失败")
-                return None
-
-            # 查找解压后的目录
-            extracted_dirs = [d for d in os.listdir(temp_dir) 
-                            if os.path.isdir(os.path.join(temp_dir, d)) and d != "__MACOSX"]
-            if not extracted_dirs:
-                ui.print_error("解压后未找到项目目录")
-                return None
-
-            source_dir = os.path.join(temp_dir, extracted_dirs[0])
-
-            # 创建目标目录并复制文件
-            target_dir = os.path.join(nickname_dir, "MaiBot")
-            ui.print_info(f"正在安装MaiBot文件到: {target_dir}")
-            shutil.copytree(source_dir, target_dir)
-
-            ui.print_success(f"✅ MaiBot安装完成，序列号: {serial}，昵称: {nickname}")
-            logger.info("MaiBot安装成功", path=target_dir, serial=serial, nickname=nickname)
-            return target_dir
-        """
         安装MaiBot主体
         
         Args:
@@ -121,7 +59,7 @@ class MaiBotDeployer(BaseDeployer):
                 return None
             
             # 查找解压后的目录
-            extracted_dirs = [d for d in os.listdir(temp_dir) 
+            extracted_dirs = [d for d in os.listdir(temp_dir)
                             if os.path.isdir(os.path.join(temp_dir, d)) and d != "__MACOSX"]
             if not extracted_dirs:
                 ui.print_error("解压后未找到项目目录")

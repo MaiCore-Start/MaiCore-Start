@@ -27,61 +27,47 @@ class MoFoxBotDeployer(BaseDeployer):
     
     def install_bot(self, deploy_config: Dict) -> Optional[str]:
         """
-        安装MoFox_bot主体，支持自定义序列号和昵称
+        安装MoFox_bot主体
+        
+        Args:
+            deploy_config: 部署配置
+            
+        Returns:
+            MoFox_bot安装路径，失败返回None
         """
         ui.console.print("\n[📦 第一步：安装MoFox_bot]", style=ui.colors["primary"])
+        
         selected_version = deploy_config["selected_version"]
         install_dir = deploy_config["install_dir"]
-
-        # 让用户输入序列号（ASCII校验）
-        while True:
-            serial = input("请输入序列号 (仅限ASCII字符): ").strip()
-            if serial and all(ord(c) < 128 for c in serial):
-                break
-            ui.print_warning("序列号必须为ASCII字符，请重新输入！")
-        deploy_config["serial"] = serial
-
-        # 让用户输入昵称
-        while True:
-            nickname = input("请输入昵称 (用于文件夹命名): ").strip()
-            if nickname:
-                break
-            ui.print_warning("昵称不能为空，请重新输入！")
-        deploy_config["nickname"] = nickname
-
-        # 创建昵称文件夹
-        nickname_dir = os.path.join(install_dir, nickname)
-        os.makedirs(nickname_dir, exist_ok=True)
-        deploy_config["nickname_dir"] = nickname_dir
-
+        
         with tempfile.TemporaryDirectory() as temp_dir:
             # 下载源码
             ui.print_info("正在下载MoFox_bot源码...")
             download_url = selected_version["download_url"]
             archive_path = os.path.join(temp_dir, f"{selected_version['name']}.zip")
-
-            # 显示进度条下载
+            
             if not self.download_file(download_url, archive_path):
                 ui.print_error("MoFox_bot下载失败")
                 return None
-
+            
             # 解压到临时目录
             ui.print_info("正在解压MoFox_bot...")
             if not self.extract_archive(archive_path, temp_dir):
                 ui.print_error("MoFox_bot解压失败")
                 return None
-
+            
             # 查找解压后的目录
-            extracted_dirs = [d for d in os.listdir(temp_dir) 
+            extracted_dirs = [d for d in os.listdir(temp_dir)
                             if os.path.isdir(os.path.join(temp_dir, d)) and d != "__MACOSX"]
             if not extracted_dirs:
                 ui.print_error("解压后未找到项目目录")
                 return None
-
+            
             source_dir = os.path.join(temp_dir, extracted_dirs[0])
-
+            
             # 创建目标目录并复制文件
-            target_dir = os.path.join(nickname_dir, "MoFox_bot")
+            os.makedirs(install_dir, exist_ok=True)
+            target_dir = os.path.join(install_dir, "MoFox_bot")
             
             # 检查目标目录是否已存在
             if os.path.exists(target_dir):
@@ -92,11 +78,11 @@ class MoFoxBotDeployer(BaseDeployer):
                     ui.print_error(f"删除旧目录失败: {str(e)}")
                     return None
             
-            ui.print_info(f"正在安装MoFox_bot文件到: {target_dir}")
+            ui.print_info("正在安装MoFox_bot文件...")
             shutil.copytree(source_dir, target_dir)
-
-            ui.print_success(f"✅ MoFox_bot安装完成，序列号: {serial}，昵称: {nickname}")
-            logger.info("MoFox_bot安装成功", path=target_dir, serial=serial, nickname=nickname)
+            
+            ui.print_success("✅ MoFox_bot安装完成")
+            logger.info("MoFox_bot安装成功", path=target_dir)
             return target_dir
     
     def setup_config_files(self, deploy_config: Dict, bot_path: str, 

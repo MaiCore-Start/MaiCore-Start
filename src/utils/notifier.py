@@ -66,7 +66,7 @@ class WindowsNotifier:
         try:
             # 创建通知对象，如果有图标则传入
             notification_args = {
-                "app_id": "MaiCore",
+                "app_id": "MaiCore-Start",
                 "title": title,
                 "msg": message,
                 "duration": "short" if duration <= 5 else "long"

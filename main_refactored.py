@@ -355,15 +355,27 @@ class MaiMaiLauncher:
             on_exit_action = p_config_manager.get("on_exit.process_action", "ask")
             minimize_to_tray = p_config_manager.get("ui.minimize_to_tray", False)
             notifications_enabled = p_config_manager.get("notifications.windows_center_enabled", False)
+            
+            # 获取代理配置
+            proxy_config = p_config_manager.get_proxy_config()
+            proxy_enabled = proxy_config.get("enabled", False)
+            proxy_type = proxy_config.get("type", "http")
+            proxy_host = proxy_config.get("host", "")
+            proxy_port = proxy_config.get("port", "")
+            
             ui.show_program_settings_menu(
                 current_colors,
                 current_log_days,
                 on_exit_action,
                 minimize_to_tray,
                 notifications_enabled,
+                proxy_enabled,
+                proxy_type,
+                proxy_host,
+                proxy_port,
             )
             
-            choice = ui.get_choice("请选择操作", ["L", "E", "C", "R", "T", "N", "Q"])
+            choice = ui.get_choice("请选择操作", ["L", "E", "C", "R", "T", "N", "P", "Q"])
             
             if choice == "Q":
                 break
@@ -457,6 +469,172 @@ class MaiMaiLauncher:
                 p_config_manager.save()
                 state_text = "开启" if new_value else "关闭"
                 ui.print_success(f"Windows 通知功能已{state_text}。")
+                ui.pause()
+            
+            elif choice == "P":
+                # 配置网络代理
+                self.handle_proxy_config()
+
+    def handle_proxy_config(self):
+        """处理代理配置"""
+        try:
+            from src.utils.proxy_manager import proxy_manager
+        except ImportError:
+            ui.print_error("代理管理模块不可用，请检查安装。")
+            ui.pause()
+            return
+        
+        while True:
+            ui.clear_screen()
+            
+            # 获取当前代理配置
+            proxy_info = proxy_manager.get_proxy_info()
+            
+            # 显示代理配置菜单
+            ui.menus.show_proxy_config_menu(
+                proxy_enabled=proxy_info.get("enabled", False),
+                proxy_type=proxy_info.get("type", "http"),
+                proxy_host=proxy_info.get("host", ""),
+                proxy_port=proxy_info.get("port", ""),
+                proxy_username=proxy_info.get("username", ""),
+                has_password=proxy_info.get("has_password", False),
+                exclude_hosts=proxy_info.get("exclude_hosts", ""),
+            )
+            
+            choice = ui.get_input("请选择操作: ").upper()
+            
+            if choice == "Q":
+                break
+            
+            elif choice == "E":
+                # 启用代理
+                if not proxy_info.get("host") or not proxy_info.get("port"):
+                    ui.print_warning("请先设置代理主机和端口！")
+                    ui.pause()
+                    continue
+                proxy_manager.update_config(enabled=True)
+                ui.print_success("代理已启用。")
+                ui.pause()
+            
+            elif choice == "D":
+                # 禁用代理
+                proxy_manager.update_config(enabled=False)
+                ui.print_success("代理已禁用。")
+                ui.pause()
+            
+            elif choice == "1":
+                # 设置代理类型
+                ui.print_info("支持的代理类型：HTTP、HTTPS、SOCKS5、SOCKS4")
+                proxy_type = ui.get_input("请输入代理类型 [http/https/socks5/socks4]: ").lower()
+                if proxy_type in ["http", "https", "socks5", "socks4"]:
+                    proxy_manager.update_config(type=proxy_type)
+                    ui.print_success(f"代理类型已设置为: {proxy_type.upper()}")
+                else:
+                    ui.print_error("无效的代理类型。")
+                ui.pause()
+            
+            elif choice == "2":
+                # 设置代理主机
+                host = ui.get_input("请输入代理主机地址 (例如: 127.0.0.1): ").strip()
+                if host:
+                    proxy_manager.update_config(host=host)
+                    ui.print_success(f"代理主机已设置为: {host}")
+                else:
+                    ui.print_error("主机地址不能为空。")
+                ui.pause()
+            
+            elif choice == "3":
+                # 设置代理端口
+                port = ui.get_input("请输入代理端口 (例如: 7890): ").strip()
+                if port.isdigit():
+                    proxy_manager.update_config(port=port)
+                    ui.print_success(f"代理端口已设置为: {port}")
+                else:
+                    ui.print_error("端口必须是数字。")
+                ui.pause()
+            
+            elif choice == "4":
+                # 设置用户名
+                username = ui.get_input("请输入用户名 (留空则不使用): ").strip()
+                proxy_manager.update_config(username=username)
+                if username:
+                    ui.print_success(f"用户名已设置为: {username}")
+                else:
+                    ui.print_success("已清除用户名。")
+                ui.pause()
+            
+            elif choice == "5":
+                # 设置密码
+                import getpass
+                password = getpass.getpass("请输入密码 (输入时不显示): ").strip()
+                proxy_manager.update_config(password=password)
+                if password:
+                    ui.print_success("密码已设置。")
+                else:
+                    ui.print_success("已清除密码。")
+                ui.pause()
+            
+            elif choice == "6":
+                # 设置排除主机
+                ui.print_info("不使用代理的主机列表，用逗号分隔")
+                ui.print_info("例如: localhost,127.0.0.1,*.local")
+                exclude = ui.get_input("请输入排除主机列表: ").strip()
+                if exclude:
+                    proxy_manager.update_config(exclude_hosts=exclude)
+                    ui.print_success(f"排除主机已设置为: {exclude}")
+                else:
+                    ui.print_error("排除主机列表不能为空。")
+                ui.pause()
+            
+            elif choice == "T":
+                # 测试代理连接
+                ui.print_info("正在测试代理连接...")
+                result = proxy_manager.test_connection("https://www.baidu.com")
+                
+                if result.get("success"):
+                    ui.print_success(result.get("message", "连接成功"))
+                else:
+                    ui.print_error(result.get("message", "连接失败"))
+                ui.pause()
+            
+            elif choice == "C":
+                # 快速配置 Clash
+                proxy_manager.update_config(
+                    type="http",
+                    host="127.0.0.1",
+                    port="7890",
+                    username="",
+                    password="",
+                )
+                ui.print_success("已配置为 Clash 默认代理 (HTTP 127.0.0.1:7890)")
+                ui.pause()
+            
+            elif choice == "V":
+                # 快速配置 V2rayN
+                proxy_manager.update_config(
+                    type="socks5",
+                    host="127.0.0.1",
+                    port="10808",
+                    username="",
+                    password="",
+                )
+                ui.print_success("已配置为 V2rayN 默认代理 (SOCKS5 127.0.0.1:10808)")
+                ui.pause()
+            
+            elif choice == "S":
+                # 快速配置 Shadowsocks
+                proxy_manager.update_config(
+                    type="socks5",
+                    host="127.0.0.1",
+                    port="1080",
+                    username="",
+                    password="",
+                )
+                ui.print_success("已配置为 Shadowsocks 默认代理 (SOCKS5 127.0.0.1:1080)")
+                ui.pause()
+            
+            else:
+                ui.print_error("无效的选项。")
                 ui.pause()
 
     def handle_component_download(self):

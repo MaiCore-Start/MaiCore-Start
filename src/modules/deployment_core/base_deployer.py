@@ -309,20 +309,29 @@ class BaseDeployer:
                 
                 with open(filename, 'wb') as f:
                     if total_size > 0:
-                        # 使用tqdm显示下载进度条
-                        with tqdm(
-                            total=total_size, 
-                            unit='B', 
-                            unit_scale=True, 
-                            unit_divisor=1024,
-                            desc=f"下载 {file_basename}",
-                            ncols=80,
-                            bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]'
-                        ) as pbar:
+                        # 使用Rich的进度条显示下载进度
+                        from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn
+                        from rich.console import Console
+                        
+                        with Progress(
+                            TextColumn("[bold blue]{task.description}"),
+                            BarColumn(),
+                            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                            TextColumn("•"),
+                            TextColumn("[bold green]{task.completed}/{task.total}"),
+                            TextColumn("•"),
+                            TimeRemainingColumn(),
+                            TextColumn("•"),
+                            TransferSpeedColumn(),
+                            console=ui.console,
+                            transient=False
+                        ) as progress:
+                            task = progress.add_task(f"下载 {file_basename}", total=total_size)
+                            
                             for chunk in response.iter_content(chunk_size=8192):
                                 if chunk:
                                     f.write(chunk)
-                                    pbar.update(len(chunk))
+                                    progress.update(task, advance=len(chunk))
                     else:
                         # 如果没有文件大小信息，使用简单的进度显示
                         downloaded = 0

@@ -543,9 +543,10 @@ class DeploymentManager:
         ui.console.print("4. 如安装了NapCat，请配置QQ登录和WebSocket连接参数。", style=ui.colors["attention"])
         ui.console.print("\n您现在可以通过主菜单的启动选项来运行该实例。", style=ui.colors["success"])
 
-        # 询问是否打开配置文件
+        # 询问是否打开配置文件 - 在询问前发送通知
         if windows_notifier.is_enabled():
-            windows_notifier.send("配置提醒", "是否立即在文本编辑器中打开主要配置文件？")
+            windows_notifier.send("部署即将完成", "是否在文本编辑器中打开配置文件？")
+        
         if ui.confirm("\n是否立即在文本编辑器中打开主要配置文件？"):
             files_to_open = []
             

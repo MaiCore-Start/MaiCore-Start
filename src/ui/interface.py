@@ -68,6 +68,10 @@ class UI:
         on_exit_action: str,
         minimize_to_tray_enabled: bool,
         notifications_enabled: bool,
+        proxy_enabled: bool = False,
+        proxy_type: str = "http",
+        proxy_host: str = "",
+        proxy_port: str = "",
     ):
         """显示程序设置菜单"""
         self.clear_screen()
@@ -78,6 +82,10 @@ class UI:
             on_exit_action,
             minimize_to_tray_enabled,
             notifications_enabled,
+            proxy_enabled,
+            proxy_type,
+            proxy_host,
+            proxy_port,
         )
 
     def show_plugin_menu(self):

@@ -6,6 +6,17 @@ from fastapi import Request
 from fastapi.staticfiles import StaticFiles
 import os
 import json
+import sys
+
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+try:
+    from src.utils.proxy_manager import proxy_manager
+    PROXY_AVAILABLE = True
+except ImportError:
+    PROXY_AVAILABLE = False
+    proxy_manager = None
 
 app = FastAPI()
 
@@ -160,3 +171,52 @@ async def set_ui_settings(request: Request):
     data["ui_settings"] = ui_settings
     save_ui_json(data)
     return {"success": True}
+
+# ==================== 代理设置 API ====================
+
+@app.get("/api/proxy")
+def get_proxy_config():
+    """获取代理配置"""
+    if not PROXY_AVAILABLE:
+        return {"success": False, "msg": "代理管理器不可用"}
+    try:
+        return {"success": True, "data": proxy_manager.get_proxy_info()}
+    except Exception as e:
+        return {"success": False, "msg": str(e)}
+
+@app.post("/api/proxy")
+async def update_proxy_config(request: Request):
+    """更新代理配置"""
+    if not PROXY_AVAILABLE:
+        return {"success": False, "msg": "代理管理器不可用"}
+    try:
+        settings = await request.json()
+        
+        # 验证必要字段
+        if settings.get('enabled'):
+            if not settings.get('host') or not settings.get('port'):
+                return {"success": False, "msg": "启用代理时必须提供主机和端口"}
+        
+        # 更新配置
+        success = proxy_manager.update_config(**settings)
+        
+        if success:
+            return {"success": True, "msg": "代理配置已保存"}
+        else:
+            return {"success": False, "msg": "保存代理配置失败"}
+            
+    except Exception as e:
+        return {"success": False, "msg": str(e)}
+
+@app.post("/api/proxy/test")
+async def test_proxy_connection(request: Request):
+    """测试代理连接"""
+    if not PROXY_AVAILABLE:
+        return {"success": False, "msg": "代理管理器不可用"}
+    try:
+        data = await request.json()
+        test_url = data.get('test_url', 'https://www.baidu.com')
+        result = proxy_manager.test_connection(test_url)
+        return result
+    except Exception as e:
+        return {"success": False, "msg": str(e)}

@@ -45,10 +45,21 @@ class PConfig:
             "process_action": "ask"
         },
         "notifications": {
-            "windows_center_enabled": False
+            "windows_center_enabled": True
         },
         "ui": {
             "minimize_to_tray": False
+        },
+        "network": {
+            "proxy": {
+                "enabled": False,
+                "type": "http",
+                "host": "",
+                "port": "",
+                "username": "",
+                "password": "",
+                "exclude_hosts": "localhost,127.0.0.1"
+            }
         }
     }
 
@@ -115,6 +126,14 @@ class PConfig:
     def get_theme_colors(self) -> Dict[str, str]:
         """获取当前主题颜色"""
         return self.get("theme", self.DEFAULT_CONFIG["theme"])
+
+    def get_proxy_config(self) -> Dict[str, Any]:
+        """获取代理配置"""
+        return self.get("network.proxy", self.DEFAULT_CONFIG["network"]["proxy"])
+
+    def is_proxy_enabled(self) -> bool:
+        """检查代理是否启用"""
+        return self.get("network.proxy.enabled", False)
 
     def reset_to_default(self) -> bool:
         """将配置重置为默认值并保存"""

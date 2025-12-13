@@ -126,7 +126,7 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         self.console.print(f" [D] {self.symbols['validate']} 验证配置", style=self.colors["success"])
         self.console.print(f" [E] {self.symbols['new']} 新建配置集", style=self.colors["success"])
         self.console.print(f" [F] {self.symbols['delete']} 删除配置集", style=self.colors["error"])
-        self.console.print(f" [G] {self.symbols['edit']} 打开配置文件", style=self.colors["info"])
+        self.console.print(f" [G] {self.symbols['edit']} 打开实例配置文件", style=self.colors["info"])
         
         self.console.print("====>>返回<<====")
         self.console.print(f" [Q] {self.symbols['back']} 返回上级", style=self.colors["exit"])
@@ -173,6 +173,10 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         on_exit_action: str,
         minimize_to_tray_enabled: bool,
         notifications_enabled: bool,
+        proxy_enabled: bool = False,
+        proxy_type: str = "http",
+        proxy_host: str = "",
+        proxy_port: str = "",
     ):
         """显示程序设置菜单"""
         from rich.table import Table
@@ -183,7 +187,7 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         )
         self.console.print(panel)
         
-        self.console.print("在这里，你可以自定义启动器的外观主题和日志设置。")
+        self.console.print("在这里，你可以自定义启动器的外观主题、日志设置和网络代理。")
 
         # 显示日志保留天数
         self.console.print("\n[bold]日志设置[/bold]")
@@ -204,6 +208,17 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         notify_status = "开启" if notifications_enabled else "关闭"
         self.console.print(f"  Windows 通知中心推送: [bold yellow]{notify_status}[/bold yellow]")
 
+        # 显示代理设置
+        self.console.print("\n[bold]网络代理设置[/bold]")
+        proxy_status = "已启用" if proxy_enabled else "未启用"
+        proxy_color = "green" if proxy_enabled else "red"
+        self.console.print(f"  代理状态: [bold {proxy_color}]{proxy_status}[/bold {proxy_color}]")
+        if proxy_enabled and proxy_host and proxy_port:
+            self.console.print(f"  代理类型: [bold cyan]{proxy_type.upper()}[/bold cyan]")
+            self.console.print(f"  代理地址: [bold cyan]{proxy_host}:{proxy_port}[/bold cyan]")
+        elif proxy_enabled:
+            self.console.print(f"  [bold red]⚠ 代理已启用但配置不完整[/bold red]")
+
         # 显示当前颜色设置
         table = Table(title="当前主题颜色", show_header=True, header_style="bold magenta")
         table.add_column("选项", style="dim", width=6)
@@ -222,7 +237,66 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         self.console.print(f" [C] {self.symbols['edit']} 修改颜色 (输入选项数字)", style=self.colors["success"])
         self.console.print(f" [T] {self.symbols['edit']} 切换最小化到托盘", style=self.colors["secondary"])
         self.console.print(f" [N] {self.symbols['edit']} 切换Windows通知", style=self.colors["primary"])
+        self.console.print(f" [P] {self.symbols['config']} 配置网络代理", style=self.colors["info"])
         self.console.print(f" [R] {self.symbols['back']} 恢复默认设置", style=self.colors["error"])
         
         self.console.print("====>>返回<<====")
+        self.console.print(f" [Q] {self.symbols['back']} 返回上级", style=self.colors["exit"])
+
+    def show_proxy_config_menu(
+        self,
+        proxy_enabled: bool = False,
+        proxy_type: str = "http",
+        proxy_host: str = "",
+        proxy_port: str = "",
+        proxy_username: str = "",
+        has_password: bool = False,
+        exclude_hosts: str = "",
+    ):
+        """显示代理配置菜单"""
+        panel = Panel(
+            f"[{self.symbols['config']} 网络代理配置]",
+            style=self.colors["info"],
+            title="网络代理配置"
+        )
+        self.console.print(panel)
+        
+        # 显示当前配置
+        self.console.print("\n[bold]当前代理配置[/bold]")
+        proxy_status = "✓ 已启用" if proxy_enabled else "✗ 未启用"
+        proxy_color = "green" if proxy_enabled else "red"
+        self.console.print(f"  状态: [bold {proxy_color}]{proxy_status}[/bold {proxy_color}]")
+        self.console.print(f"  类型: [cyan]{proxy_type.upper() if proxy_type else '(未设置)'}[/cyan]")
+        self.console.print(f"  主机: [cyan]{proxy_host if proxy_host else '(未设置)'}[/cyan]")
+        self.console.print(f"  端口: [cyan]{proxy_port if proxy_port else '(未设置)'}[/cyan]")
+        self.console.print(f"  用户名: [cyan]{proxy_username if proxy_username else '(未设置)'}[/cyan]")
+        self.console.print(f"  密码: [cyan]{'已设置' if has_password else '(未设置)'}[/cyan]")
+        self.console.print(f"  排除主机: [cyan]{exclude_hosts if exclude_hosts else 'localhost,127.0.0.1'}[/cyan]")
+        
+        # 常见配置示例
+        self.console.print("\n[bold]💡 常见代理软件配置参考[/bold]")
+        self.console.print("  • Clash:       HTTP    127.0.0.1:7890")
+        self.console.print("  • V2rayN:      SOCKS5  127.0.0.1:10808")
+        self.console.print("  • Shadowsocks: SOCKS5  127.0.0.1:1080")
+        
+        self.console.print("\n====>>代理操作<<====")
+        if proxy_enabled:
+            self.console.print(f" [D] {self.symbols['delete']} 禁用代理", style=self.colors["error"])
+        else:
+            self.console.print(f" [E] {self.symbols['new']} 启用代理", style=self.colors["success"])
+        
+        self.console.print(f" [1] {self.symbols['edit']} 设置代理类型 (HTTP/HTTPS/SOCKS5/SOCKS4)", style=self.colors["warning"])
+        self.console.print(f" [2] {self.symbols['edit']} 设置代理主机", style=self.colors["warning"])
+        self.console.print(f" [3] {self.symbols['edit']} 设置代理端口", style=self.colors["warning"])
+        self.console.print(f" [4] {self.symbols['edit']} 设置用户名 (可选)", style=self.colors["secondary"])
+        self.console.print(f" [5] {self.symbols['edit']} 设置密码 (可选)", style=self.colors["secondary"])
+        self.console.print(f" [6] {self.symbols['edit']} 设置排除主机", style=self.colors["secondary"])
+        self.console.print(f" [T] {self.symbols['status']} 测试代理连接", style=self.colors["info"])
+        
+        self.console.print("\n====>>快速配置<<====")
+        self.console.print(f" [C] {self.symbols['rocket']} 快速配置 Clash 代理 (127.0.0.1:7890)", style=self.colors["primary"])
+        self.console.print(f" [V] {self.symbols['rocket']} 快速配置 V2rayN 代理 (127.0.0.1:10808)", style=self.colors["primary"])
+        self.console.print(f" [S] {self.symbols['rocket']} 快速配置 Shadowsocks 代理 (127.0.0.1:1080)", style=self.colors["primary"])
+        
+        self.console.print("\n====>>返回<<====")
         self.console.print(f" [Q] {self.symbols['back']} 返回上级", style=self.colors["exit"])
