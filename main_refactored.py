@@ -879,6 +879,14 @@ class MaiMaiLauncher:
                     self.handle_launch_mai()
                 elif choice == "A2":
                     self.handle_multi_launch()
+                elif choice == "A3":
+                    # 检测本地多开（进程/端口）
+                    try:
+                        launcher._detect_multi_open()
+                    except Exception as e:
+                        ui.print_error(f"检测本地多开过程出错：{str(e)}")
+                        logger.error("检测本地多开异常", error=str(e))
+                    ui.pause()
                 elif choice == "B":
                     self.handle_config_menu()
                 elif choice == "C":

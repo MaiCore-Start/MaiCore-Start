@@ -294,6 +294,30 @@ class MultiLaunchManager:
         self.config_backups: Dict[str, str] = {}  # 备份配置：{config_path: backup_path}
         self.modified_configs: List[str] = []  # 已修改的配置文件列表（用于回滚）
         self.launched_instances: List[str] = []  # 已成功启动的实例列表（用于回滚）
+        # 进程匹配签名（名称或命令行包含任一则视为可能相关）
+        self.process_signatures: List[str] = [
+            # 通用脚本/入口
+            "mai.py", "bot.py", "main.py", "app.py",
+            # MaiCore/MaiBot 相关关键词
+            "maimaibot", "maibot", "maicore", "MaiCore-Start",
+            # 适配器/桥接常见关键词
+            "napcat", "onebot", "ob11", "koishi",
+            # Node/JS 进程提示
+            "node", "npm", "pnpm",
+            # Go/可执行名称常见样式
+            "mofox", "go-build"
+        ]
+        # 端口提示（优先级更高的候选端口）
+        self.port_hints: List[int] = [
+            # 常见Web与服务端口
+            8000, 8001, 8002, 8080, 8081, 8082,
+            # 机器人/适配器常见端口
+            5700, 6700, 8888, 9090,
+            # 数据库/组件
+            27017, 27018, 3306,
+            # 其他可能端口
+            4000, 5000, 5050, 5283, 5353
+        ]
     
     def register_instance(
         self, 
@@ -390,6 +414,82 @@ class MultiLaunchManager:
     def get_all_instances(self) -> Dict[str, Dict[str, Any]]:
         """获取所有已注册的实例"""
         return self.instances.copy()
+
+    def detect_local_instances(self) -> Dict[str, Any]:
+        """
+        检测本地正在运行的多开实例（智能扫描端口与进程）
+        
+        Returns:
+            检测报告：{
+              "processes": [{pid, name, cmdline}],
+              "ports": [{port, pid, status}],
+              "suspected_instances": [{pid, name, port, cmdline}]
+            }
+        """
+        report: Dict[str, Any] = {
+            "processes": [],
+            "ports": [],
+            "suspected_instances": []
+        }
+        try:
+            import psutil
+        except Exception:
+            logger.warning("psutil不可用，无法进行本地实例检测")
+            return report
+
+        processes = []
+        for p in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
+            info = p.info
+            name = (info.get("name") or "").lower()
+            cmdline = " ".join(info.get("cmdline") or [])
+            # 名称或命令行包含签名；对大小写统一处理
+            if any(sig.lower() in name or sig.lower() in cmdline for sig in self.process_signatures):
+                processes.append({
+                    "pid": info.get("pid"),
+                    "name": info.get("name"),
+                    "cmdline": info.get("cmdline")
+                })
+        report["processes"] = processes
+
+        ports = []
+        try:
+            connections = psutil.net_connections(kind="inet")
+            for conn in connections:
+                laddr = getattr(conn, "laddr", None)
+                pid = getattr(conn, "pid", None)
+                status = getattr(conn, "status", "")
+                if laddr and getattr(laddr, "port", None):
+                    port = laddr.port
+                    # 命中提示端口，或在有效端口范围内（排除系统保留端口）
+                    if port in self.port_hints or (1024 <= port <= 65535):
+                        ports.append({
+                            "port": port,
+                            "pid": pid,
+                            "status": status
+                        })
+        except Exception as e:
+            logger.warning("网络连接检测失败", error=str(e))
+        report["ports"] = ports
+
+        pid_to_port = {}
+        for item in ports:
+            if item.get("pid"):
+                pid_to_port.setdefault(item["pid"], set()).add(item["port"])
+
+        suspected = []
+        for proc in processes:
+            pid = proc.get("pid")
+            ports_for_pid = sorted(list(pid_to_port.get(pid, [])))
+            suspected.append({
+                "pid": pid,
+                "name": proc.get("name"),
+                "cmdline": proc.get("cmdline"),
+                "ports": ports_for_pid
+            })
+        report["suspected_instances"] = suspected
+
+        logger.info("本地多开检测完成", process_count=len(processes), suspected=len(suspected))
+        return report
     
     def backup_config(self, config_path: str) -> Optional[str]:
         """

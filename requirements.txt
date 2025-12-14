@@ -1,6 +1,4 @@
-colorama==0.4.6
 tqdm==4.65.0
-toml==0.10.2
 requests==2.31.0
 structlog==23.1.0
 rich==13.5.2
@@ -12,5 +10,3 @@ lxml
 psutil
 pystray==0.19.5
 pillow==10.4.0
-win10toast==0.9
-win11toast==0.35

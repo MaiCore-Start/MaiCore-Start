@@ -817,10 +817,18 @@ class MaiLauncher:
             version = config.get("version_path", "未知")
             bot_type = config.get("bot_type", "MaiBot")
             ui.console.print(f" [{i}] {config_name}: {nickname} (版本: {version}, 类型: {bot_type})")
+
+        ui.console.print("\n其它操作:", style=ui.colors["info"])
+        ui.console.print(f" [D] 检测本地多开（扫描进程与端口）", style=ui.colors["secondary"])
         
         # 让用户选择要启动的配置
-        ui.console.print("\n请选择要多开的配置 (使用逗号','分隔，例如: 1,2,3):")
+        ui.console.print("\n请选择要多开的配置 (使用逗号','分隔，例如: 1,2,3)，或输入 D 执行检测:")
         choices_str = ui.get_input("请输入选择: ").strip()
+
+        if choices_str.upper() == "D":
+            self._detect_multi_open()
+            ui.pause()
+            return False
         
         try:
             choices = [int(c.strip()) for c in choices_str.split(',')]
@@ -868,6 +876,87 @@ class MaiLauncher:
             ui.print_error(f"输入格式错误: {str(e)}")
             ui.pause()
             return False
+
+    def _detect_multi_open(self):
+        """检测本地正在运行的多开实例，输出简报。"""
+        from rich.table import Table
+        from rich.panel import Panel
+        import json, os, time
+
+        ui.print_info("🔎 正在检测本地多开实例...")
+        report = multi_launch_manager.detect_local_instances()
+        processes = report.get("processes", [])
+        suspected = report.get("suspected_instances", [])
+        ports = report.get("ports", [])
+
+        # 进程表
+        proc_table = Table(title="进程匹配（可能的Bot相关进程）", show_header=True, header_style="bold magenta")
+        proc_table.add_column("PID", justify="right", style="cyan", no_wrap=True)
+        proc_table.add_column("名称", style="yellow")
+        if not processes:
+            proc_table.add_row("-", "无匹配进程")
+        else:
+            for p in processes:
+                pid = str(p.get("pid", "-"))
+                name = str(p.get("name", "未知"))
+                proc_table.add_row(pid, name)
+
+        # 端口表（最多展示30条）
+        port_table = Table(title="端口占用（可能相关）", show_header=True, header_style="bold magenta")
+        port_table.add_column("端口", justify="right", style="cyan", no_wrap=True)
+        port_table.add_column("PID", justify="right", style="yellow", no_wrap=True)
+        port_table.add_column("状态", style="green")
+        if not ports:
+            port_table.add_row("-", "-", "无相关端口")
+        else:
+            shown = 0
+            for item in sorted(ports, key=lambda x: (x.get('port', 0), x.get('pid') or 0)):
+                port_table.add_row(str(item.get('port')), str(item.get('pid') or "-"), str(item.get('status') or ""))
+                shown += 1
+                if shown >= 30:
+                    break
+
+        # 疑似实例表
+        sus_table = Table(title="疑似多开实例（进程关联端口）", show_header=True, header_style="bold magenta")
+        sus_table.add_column("PID", justify="right", style="cyan", no_wrap=True)
+        sus_table.add_column("名称", style="yellow")
+        sus_table.add_column("端口", style="green")
+        if not suspected:
+            sus_table.add_row("-", "-", "未发现疑似实例")
+        else:
+            for s in suspected:
+                ports_str = ",".join(map(str, s.get('ports', []))) or "无"
+                sus_table.add_row(str(s.get('pid')), str(s.get('name')), ports_str)
+
+        # 输出为三个分块
+        ui.console.print(Panel(proc_table, border_style="cyan"))
+        ui.console.print(Panel(port_table, border_style="cyan"))
+        ui.console.print(Panel(sus_table, border_style="cyan"))
+
+        # 自动保存 JSON 报告到 Temporary/
+        try:
+            ts = time.strftime("%Y%m%d-%H%M%S")
+            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            temp_dir = os.path.join(root_dir, "Temporary")
+            os.makedirs(temp_dir, exist_ok=True)
+            out_path = os.path.join(temp_dir, f"detect_multi_open_report_{ts}.json")
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(report, f, ensure_ascii=False, indent=2)
+            ui.print_success(f"检测报告已保存：{out_path}")
+            # 提示是否打开报告目录
+            if ui.confirm("是否打开报告目录？"):
+                try:
+                    import subprocess
+                    if os.name == 'nt':
+                        subprocess.Popen(["explorer", temp_dir])
+                    else:
+                        subprocess.Popen(["xdg-open", temp_dir])
+                except Exception as e:
+                    ui.print_warning(f"打开目录失败：{e}")
+        except Exception as e:
+            ui.print_warning(f"报告保存失败：{e}")
+
+        ui.print_success("\n✅ 本地多开检测完成")
 
     def _launch_multiple_instances(self, configs: List[Tuple[str, Dict]], ports: List[int]) -> bool:
         """
