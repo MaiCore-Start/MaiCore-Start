@@ -64,12 +64,20 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         self.console.print("——————————", style=self.colors["border"])
         self.console.print("选择选项", style=self.colors["border"])
 
-    def show_main_menu(self):
-        """显示主菜单"""
+    def show_main_menu(self, has_running_instances=False):
+        """显示主菜单
+        
+        Args:
+            has_running_instances: 是否有正在运行的实例
+        """
         self.print_header()
         
         self.console.print("====>>启动类<<====")
-        self.console.print(f" [A] {self.symbols['rocket']} 运行麦麦", style=self.colors["success"])
+        # 根据是否有运行实例动态显示选项文本
+        if has_running_instances:
+            self.console.print(f" [A] {self.symbols['rocket']} 实例多开", style=self.colors["success"])
+        else:
+            self.console.print(f" [A] {self.symbols['rocket']} 运行麦麦", style=self.colors["success"])
         
         self.console.print("====>>配置类<<====")
         self.console.print(f" [B] {self.symbols['config']} 配置管理（新建/修改/检查配置）", style=self.colors["warning"])

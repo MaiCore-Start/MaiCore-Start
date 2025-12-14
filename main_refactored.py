@@ -1131,7 +1131,9 @@ class MaiMaiLauncher:
             logger.info("启动器主循环开始")
             
             while self.running:
-                ui.show_main_menu()
+                # 检查是否有正在运行的实例
+                has_running = len(launcher._process_manager.get_running_processes_info()) > 0
+                ui.show_main_menu(has_running_instances=has_running)
                 choice = ui.get_input("请输入选项").upper()
                 
                 logger.debug("用户选择", choice=choice)

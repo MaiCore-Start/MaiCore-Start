@@ -33,11 +33,15 @@ class UI:
         """清屏"""
         os.system('cls' if os.name == 'nt' else 'clear')
 
-    def show_main_menu(self):
-        """显示主菜单"""
+    def show_main_menu(self, has_running_instances=False):
+        """显示主菜单
+        
+        Args:
+            has_running_instances: 是否有正在运行的实例
+        """
         self.clear_screen()
         logger.info("显示主菜单")
-        self.menus.show_main_menu()
+        self.menus.show_main_menu(has_running_instances)
 
     def show_config_menu(self):
         """显示配置菜单"""
