@@ -28,8 +28,16 @@ class Config:
                 "adapter_path": "",
                 "napcat_path": "",
                 "napcat_version": "",  # 新增字段，标识NapCatQQ版本 (如 "NapCat.Shell")
-                "qq_account": ""
+                "qq_account": "",
+                "port": 8000,  # 新增字段，用于多开时的端口分配
+                "enable_multi_launch": False  # 新增字段，是否启用多开模式
             }
+        },
+        "multi_launch_settings": {
+            "enabled": False,  # 是否启用多开功能
+            "base_port": 8000,  # 基础端口
+            "port_offset": 10,  # 端口偏移量
+            "auto_port_assignment": True  # 是否自动分配端口
         }
     }
     
@@ -62,6 +70,11 @@ class Config:
             # 验证并修复序列号
             if self._validate_and_repair_serials():
                 self.save()
+            
+            # 确保多开设置存在
+            if "multi_launch_settings" not in self.config:
+                logger.warning("配置缺少 'multi_launch_settings'，使用默认值")
+                self.config["multi_launch_settings"] = self.CONFIG_TEMPLATE["multi_launch_settings"].copy()
                 
             return self.config
             
@@ -139,6 +152,57 @@ class Config:
         existing_serials = {cfg.get("absolute_serial_number", 0) for cfg in configurations.values()}
         return max(existing_serials) + 1 if existing_serials else 1
 
+    def get_multi_launch_settings(self) -> Dict[str, Any]:
+        """获取多开设置"""
+        return self.config.get("multi_launch_settings", self.CONFIG_TEMPLATE["multi_launch_settings"].copy())
+    
+    def set_multi_launch_settings(self, settings: Dict[str, Any]) -> bool:
+        """设置多开配置"""
+        try:
+            if "multi_launch_settings" not in self.config:
+                self.config["multi_launch_settings"] = {}
+            self.config["multi_launch_settings"].update(settings)
+            logger.info("多开设置已更新", settings=settings)
+            return self.save()
+        except Exception as e:
+            logger.error("更新多开设置失败", error=str(e))
+            return False
+    
+    def get_configuration_port(self, config_name: str) -> Optional[int]:
+        """获取配置的分配端口"""
+        configurations = self.get_all_configurations()
+        if config_name in configurations:
+            return configurations[config_name].get("port")
+        return None
+    
+    def set_configuration_port(self, config_name: str, port: int) -> bool:
+        """设置配置的分配端口"""
+        try:
+            if "configurations" in self.config and config_name in self.config["configurations"]:
+                self.config["configurations"][config_name]["port"] = port
+                logger.info("配置端口已更新", config_name=config_name, port=port)
+                return self.save()
+            else:
+                logger.warning("配置不存在", config_name=config_name)
+                return False
+        except Exception as e:
+            logger.error("设置配置端口失败", error=str(e))
+            return False
+    
+    def enable_multi_launch_for_config(self, config_name: str, enable: bool) -> bool:
+        """启用/禁用配置的多开模式"""
+        try:
+            if "configurations" in self.config and config_name in self.config["configurations"]:
+                self.config["configurations"][config_name]["enable_multi_launch"] = enable
+                logger.info("配置多开模式已更新", config_name=config_name, enable=enable)
+                return self.save()
+            else:
+                logger.warning("配置不存在", config_name=config_name)
+                return False
+        except Exception as e:
+            logger.error("更新配置多开模式失败", error=str(e))
+            return False
+
     def _validate_and_repair_serials(self) -> bool:
         """验证并修复绝对序列号，确保其唯一且升序"""
         repaired = False
@@ -171,3 +235,4 @@ class Config:
 
 # 全局配置实例
 config_manager = Config()
+

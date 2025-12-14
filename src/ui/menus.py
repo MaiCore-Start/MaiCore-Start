@@ -70,6 +70,7 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         
         self.console.print("====>>启动类<<====")
         self.console.print(f" [A] {self.symbols['rocket']} 运行麦麦", style=self.colors["success"])
+        self.console.print(f" [A2] {self.symbols['rocket']} 多开启动（同时启动多个Bot）", style=self.colors["secondary"])
         
         self.console.print("====>>配置类<<====")
         self.console.print(f" [B] {self.symbols['config']} 配置管理（新建/修改/检查配置）", style=self.colors["warning"])

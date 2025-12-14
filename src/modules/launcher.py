@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import time
+import threading
 import webbrowser
 import structlog
 from datetime import datetime
@@ -16,6 +17,7 @@ from rich.table import Table
 from ..ui.interface import ui
 from ..utils.common import check_process, validate_path
 from ..utils.version_detector import is_legacy_version
+from .multi_launch import multi_launch_manager, port_manager, port_replacer
 
 logger = structlog.get_logger(__name__)
 
@@ -713,6 +715,7 @@ class MaiLauncher:
             ui.console.print(f" [{key}] {text}")
         
         ui.console.print(f" [H] 高级启动项", style=ui.colors["warning"])
+        ui.console.print(f" [M] 多开启动（同时启动多个配置）", style=ui.colors["secondary"])
         ui.console.print(f" [Q] 返回", style=ui.colors["exit"])
 
         while True:
@@ -721,6 +724,8 @@ class MaiLauncher:
                 return False
             if choice == 'H':
                 return self._show_advanced_launch_menu()
+            if choice == 'M':
+                return self._show_multi_launch_menu()
             if choice in menu_options:
                 # 检查所选选项中的组件是否都已启用
                 _, components_to_start = menu_options[choice]
@@ -784,6 +789,285 @@ class MaiLauncher:
                 return self.launch(list(dict.fromkeys(components_to_start))) # 去重并保持顺序
             elif valid_choices and not components_to_start:
                 ui.print_warning("未选择任何有效组件。")
+
+    def _show_multi_launch_menu(self) -> bool:
+        """显示多开启动菜单，允许同时启动多个配置。"""
+        from ..core.config import config_manager
+        
+        ui.clear_screen()
+        ui.console.print("[🚀 多开启动助手]", style=ui.colors["secondary"])
+        ui.console.print("="*50)
+        
+        all_configs = config_manager.get_all_configurations()
+        if not all_configs:
+            ui.print_error("没有可用的配置")
+            ui.pause()
+            return False
+        
+        if len(all_configs) < 2:
+            ui.print_warning("至少需要2个配置才能进行多开")
+            ui.pause()
+            return False
+        
+        # 显示可用的配置
+        ui.console.print("\n[可用配置列表]", style=ui.colors["info"])
+        config_list = list(all_configs.items())
+        for i, (config_name, config) in enumerate(config_list, 1):
+            nickname = config.get("nickname_path", "未知")
+            version = config.get("version_path", "未知")
+            bot_type = config.get("bot_type", "MaiBot")
+            ui.console.print(f" [{i}] {config_name}: {nickname} (版本: {version}, 类型: {bot_type})")
+        
+        # 让用户选择要启动的配置
+        ui.console.print("\n请选择要多开的配置 (使用逗号','分隔，例如: 1,2,3):")
+        choices_str = ui.get_input("请输入选择: ").strip()
+        
+        try:
+            choices = [int(c.strip()) for c in choices_str.split(',')]
+            selected_configs = []
+            
+            for choice in choices:
+                if 1 <= choice <= len(config_list):
+                    config_name, config = config_list[choice - 1]
+                    selected_configs.append((config_name, config))
+                else:
+                    ui.print_error(f"无效的选择: {choice}")
+                    return False
+            
+            if len(selected_configs) < 2:
+                ui.print_warning("请至少选择2个配置")
+                ui.pause()
+                return False
+            
+            # 显示选中的配置和分配的端口
+            ui.console.print("\n[多开配置确认]", style=ui.colors["success"])
+            ports = []
+            try:
+                for i, (config_name, config) in enumerate(selected_configs):
+                    port = port_manager.get_available_port(
+                        preferred_port=8000 + i * 10,
+                        offset=i
+                    )
+                    ports.append(port)
+                    ui.console.print(f"  • {config_name}: 端口 {port}")
+            except RuntimeError as e:
+                ui.print_error(f"端口分配失败: {str(e)}")
+                ui.pause()
+                return False
+            
+            # 确认启动
+            if not ui.confirm("\n确认要以上述配置进行多开启动吗？"):
+                ui.print_info("已取消多开启动")
+                ui.pause()
+                return False
+            
+            # 执行多开启动
+            return self._launch_multiple_instances(selected_configs, ports)
+            
+        except (ValueError, IndexError) as e:
+            ui.print_error(f"输入格式错误: {str(e)}")
+            ui.pause()
+            return False
+
+    def _launch_multiple_instances(self, configs: List[Tuple[str, Dict]], ports: List[int]) -> bool:
+        """
+        使用真正的并行启动多个Bot实例，支持失败回滚
+        
+        Args:
+            configs: [(config_name, config_dict), ...] 的列表
+            ports: [port1, port2, ...] 的列表
+            
+        Returns:
+            是否启动成功
+        """
+        import threading
+        from ..core.config import config_manager
+        
+        ui.print_info("🚀 开始多开启动流程（并行启动）...")
+        
+        # 第一阶段：配置备份和预处理
+        ui.print_info("\n📋 第一阶段：配置备份...")
+        config_backups = {}
+        
+        for (config_name, config), allocated_port in zip(configs, ports):
+            try:
+                # 获取Bot路径
+                bot_path_key = "mai_path" if config.get("bot_type") == "MaiBot" else "mofox_path"
+                bot_path = config.get(bot_path_key, "")
+                
+                if not bot_path:
+                    ui.print_error(f"实例 {config_name} 的Bot路径为空")
+                    return False
+                
+                # 备份配置文件
+                config_path = os.path.join(bot_path, "config", "bot_config.toml")
+                if os.path.exists(config_path):
+                    backup_path = multi_launch_manager.backup_config(config_path)
+                    if backup_path:
+                        config_backups[config_name] = (config_path, backup_path)
+                    else:
+                        ui.print_warning(f"无法备份配置文件: {config_path}")
+                
+                # 注册实例到多开管理器
+                if not multi_launch_manager.register_instance(
+                    config_name,
+                    bot_path,
+                    config_name,
+                    allocated_port
+                ):
+                    ui.print_error(f"无法注册实例: {config_name}")
+                    return False
+                
+                # 准备环境（替换端口）
+                if not multi_launch_manager.prepare_instance_environment(config_name):
+                    ui.print_warning(f"实例 {config_name} 的环境准备失败，但将尝试继续启动")
+                
+                multi_launch_manager.mark_config_modified(config_path)
+                
+            except Exception as e:
+                ui.print_error(f"准备实例 {config_name} 时出错: {str(e)}")
+                logger.error("准备实例失败", config_name=config_name, error=str(e))
+                # 回滚已做的改动
+                multi_launch_manager.rollback_all()
+                return False
+        
+        # 第二阶段：并行启动所有实例
+        ui.print_info("\n🚀 第二阶段：并行启动实例...")
+        
+        launch_results = {}
+        instance_threads = []
+        results_lock = threading.Lock()
+        
+        def launch_instance_thread(config_name: str, config: Dict, allocated_port: int):
+            """线程函数：启动单个实例"""
+            try:
+                ui.print_info(f"[{config_name}] 正在启动...(端口: {allocated_port})")
+                
+                # 更新配置中的端口信息
+                config_manager.set_configuration_port(config_name, allocated_port)
+                config_manager.save()
+                
+                # 为这个实例启动组件
+                old_config = self._config
+                self._config = config
+                self._register_components(config)
+                
+                success = True
+                component_results = {}
+                
+                # 启动MongoDB（如果需要）
+                if self._components['mongodb'].is_enabled:
+                    if not self._components['mongodb'].start(self._process_manager):
+                        ui.print_warning(f"[{config_name}] MongoDB启动失败，但将继续")
+                        component_results['mongodb'] = False
+                    else:
+                        component_results['mongodb'] = True
+                
+                # 启动其他组件
+                launch_order = ["napcat", "webui", "adapter", "mai"]
+                for comp_name in launch_order:
+                    if self._components[comp_name].is_enabled:
+                        if not self._components[comp_name].start(self._process_manager):
+                            component_results[comp_name] = False
+                            if comp_name == "mai":
+                                ui.print_error(f"[{config_name}] 主程序启动失败")
+                                success = False
+                                break
+                            else:
+                                ui.print_warning(f"[{config_name}] {self._components[comp_name].name} 启动失败")
+                        else:
+                            component_results[comp_name] = True
+                
+                # 恢复配置
+                self._config = old_config
+                
+                with results_lock:
+                    launch_results[config_name] = {
+                        "success": success,
+                        "components": component_results
+                    }
+                    
+                    if success:
+                        multi_launch_manager.mark_instance_launched(config_name)
+                        ui.print_success(f"✅ [{config_name}] 启动成功")
+                    else:
+                        ui.print_error(f"❌ [{config_name}] 启动失败")
+                        
+            except Exception as e:
+                ui.print_error(f"[{config_name}] 启动时出错: {str(e)}")
+                logger.error("启动实例线程出错", config_name=config_name, error=str(e))
+                
+                with results_lock:
+                    launch_results[config_name] = {
+                        "success": False,
+                        "error": str(e)
+                    }
+        
+        # 创建并启动所有线程
+        for (config_name, config), allocated_port in zip(configs, ports):
+            thread = threading.Thread(
+                target=launch_instance_thread,
+                args=(config_name, config, allocated_port),
+                daemon=False
+            )
+            instance_threads.append(thread)
+            thread.start()
+            # 添加小延迟以避免资源竞争
+            time.sleep(0.5)
+        
+        # 等待所有线程完成（设置超时）
+        timeout_per_instance = 120  # 每个实例最多等待120秒
+        total_timeout = timeout_per_instance * len(instance_threads)
+        
+        ui.print_info(f"\n⏳ 等待所有实例启动完成（最多等待 {total_timeout} 秒）...")
+        
+        for thread in instance_threads:
+            thread.join(timeout=total_timeout)
+        
+        # 第三阶段：检查结果并处理失败
+        ui.print_info("\n📊 第三阶段：检查启动结果...")
+        
+        all_success = all(result.get("success", False) for result in launch_results.values())
+        successful_instances = [name for name, result in launch_results.items() if result.get("success", False)]
+        failed_instances = [name for name, result in launch_results.items() if not result.get("success", False)]
+        
+        # 显示启动结果
+        ui.print_info("\n" + "="*60)
+        
+        if successful_instances:
+            ui.print_success(f"🎉 成功启动 {len(successful_instances)} 个实例:")
+            for instance in successful_instances:
+                ui.console.print(f"  ✅ {instance}")
+        
+        if failed_instances:
+            ui.print_error(f"❌ {len(failed_instances)} 个实例启动失败:")
+            for instance in failed_instances:
+                error_info = launch_results[instance].get("error", "未知错误")
+                ui.console.print(f"  ❌ {instance}: {error_info}")
+        
+        ui.print_info("="*60)
+        
+        # 如果有失败的实例，执行回滚
+        if not all_success:
+            ui.print_warning("\n🔄 检测到启动失败，正在执行回滚...")
+            rollback_results = multi_launch_manager.rollback_all()
+            
+            if rollback_results:
+                success_rollbacks = sum(1 for v in rollback_results.values() if v)
+                ui.print_info(f"✅ 回滚完成：{success_rollbacks}/{len(rollback_results)} 个配置文件已恢复")
+                for config_path, success in rollback_results.items():
+                    status = "✅ 已恢复" if success else "❌ 恢复失败"
+                    ui.print_info(f"  {status}: {config_path}")
+            else:
+                ui.print_warning("⚠️  没有需要回滚的配置")
+        else:
+            ui.print_success("✅ 所有实例启动成功！")
+            # 清理备份文件
+            multi_launch_manager.cleanup_backups()
+            ui.print_info("🧹 已清理备份文件")
+        
+        ui.pause()
+        return all_success
 
     def launch(self, components_to_start: List[str]) -> bool:
         """根据给定的组件列表启动。"""

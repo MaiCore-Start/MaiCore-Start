@@ -76,6 +76,18 @@ class MaiMaiLauncher:
             logger.error("启动麦麦异常", error=str(e))
             ui.pause()
     
+    def handle_multi_launch(self):
+        """处理多开启动"""
+        try:
+            ui.clear_screen()
+            # 直接调用启动器的多开菜单
+            launcher._show_multi_launch_menu()
+            
+        except Exception as e:
+            ui.print_error(f"多开启动过程出错：{str(e)}")
+            logger.error("多开启动异常", error=str(e))
+            ui.pause()
+    
     def handle_config_menu(self):
         """处理配置菜单"""
         self.handle_config_management()
@@ -865,6 +877,8 @@ class MaiMaiLauncher:
                     self._handle_exit_request()
                 elif choice == "A":
                     self.handle_launch_mai()
+                elif choice == "A2":
+                    self.handle_multi_launch()
                 elif choice == "B":
                     self.handle_config_menu()
                 elif choice == "C":
