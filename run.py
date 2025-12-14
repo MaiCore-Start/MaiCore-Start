@@ -71,7 +71,15 @@ def main():
                     for i in range(0, winreg.QueryInfoKey(pycore)[0]):
                         try:
                             version = winreg.EnumKey(pycore, i)
-                            if tuple(map(int, version.split('.'))) >= (3, 8):
+                            version_tuple = tuple(map(int, version.split('.')))
+                            
+                            # 检查Python版本是否 >= 3.14，如果是则标记为不可用
+                            if version_tuple >= (3, 14):
+                                print(f"[WARNING] 检测到Python版本 {version} >= 3.14，当前版本不可用")
+                                continue
+                            
+                            # 检查版本是否 >= 3.8 且 < 3.14
+                            if version_tuple >= (3, 8) and version_tuple < (3, 14):
                                 with winreg.OpenKey(pycore, version + r"\InstallPath") as ipath:
                                     path, _ = winreg.QueryValueEx(ipath, "")
                                     exe = Path(path) / 'python.exe'
@@ -84,12 +92,18 @@ def main():
         return None, None
 
     def prompt_install_python():
-        print("[ERROR] 未检测到可用 Python 环境 (>=3.8)。")
+        print("[ERROR] 未检测到可用 Python 环境 (>=3.8 且 <3.14)。")
         choice = input("是否安装 Python 3.12.8？(Y/N): ").strip().lower()
         if choice == 'y':
             if PYTHON_INSTALLER.exists():
                 print(f"[INFO] 正在运行安装包: {PYTHON_INSTALLER}")
-                subprocess.run([str(PYTHON_INSTALLER)], shell=True)
+                print("[INFO] 安装过程将阻塞等待完成，请耐心等待...")
+                # 使用阻塞方式运行安装程序
+                result = subprocess.run([str(PYTHON_INSTALLER)], shell=True)
+                if result.returncode == 0:
+                    print("[INFO] Python安装完成")
+                else:
+                    print(f"[ERROR] Python安装失败，返回码: {result.returncode}")
             else:
                 print(f"[ERROR] 未找到 Python 安装包！您可以前往以下网址下载安装包：\n{PYTHON_DOWNLOAD_URL}")
             input("请安装完成后按回车键继续...")
@@ -156,7 +170,15 @@ def find_installed_python():
                 for i in range(0, winreg.QueryInfoKey(pycore)[0]):
                     try:
                         version = winreg.EnumKey(pycore, i)
-                        if tuple(map(int, version.split('.'))) >= (3, 8):
+                        version_tuple = tuple(map(int, version.split('.')))
+                        
+                        # 检查Python版本是否 >= 3.14，如果是则标记为不可用
+                        if version_tuple >= (3, 14):
+                            print(f"[WARNING] 检测到Python版本 {version} >= 3.14，当前版本不可用")
+                            continue
+                        
+                        # 检查版本是否 >= 3.8 且 < 3.14
+                        if version_tuple >= (3, 8) and version_tuple < (3, 14):
                             with winreg.OpenKey(pycore, version + r"\InstallPath") as ipath:
                                 path, _ = winreg.QueryValueEx(ipath, "")
                                 exe = Path(path) / 'python.exe'
@@ -169,12 +191,18 @@ def find_installed_python():
     return None, None
 
 def prompt_install_python():
-    print("[ERROR] 未检测到可用 Python 环境 (>=3.8)。")
+    print("[ERROR] 未检测到可用 Python 环境 (>=3.8 且 <3.14)。")
     choice = input("是否安装 Python 3.12.8？(Y/N): ").strip().lower()
     if choice == 'y':
         if PYTHON_INSTALLER.exists():
             print(f"[INFO] 正在运行安装包: {PYTHON_INSTALLER}")
-            subprocess.run([str(PYTHON_INSTALLER)], shell=True)
+            print("[INFO] 安装过程将阻塞等待完成，请耐心等待...")
+            # 使用阻塞方式运行安装程序
+            result = subprocess.run([str(PYTHON_INSTALLER)], shell=True)
+            if result.returncode == 0:
+                print("[INFO] Python安装完成")
+            else:
+                print(f"[ERROR] Python安装失败，返回码: {result.returncode}")
         else:
             print(f"[ERROR] 未找到 Python 安装包！您可以前往以下网址下载安装包：\n{PYTHON_DOWNLOAD_URL}")
         input("请安装完成后按回车键继续...")

@@ -55,7 +55,7 @@ def find_system_python():
     return python_paths
 
 def check_python_version(python_exe):
-    """检查Python版本是否大于等于3.8.0"""
+    """检查Python版本是否大于等于3.8.0且小于3.14.0"""
     try:
         result = subprocess.run([python_exe, '--version'], capture_output=True, text=True, check=True, timeout=10)
         version_str = result.stdout.strip().split()[1]
@@ -64,7 +64,12 @@ def check_python_version(python_exe):
         parts = version_str.split('.')
         major, minor = int(parts[0]), int(parts[1])
         
-        # 检查版本是否 >= 3.8.0
+        # 检查版本是否 >= 3.14，如果是则标记为不可用
+        if major > 3 or (major == 3 and minor >= 14):
+            print(f"[WARNING] 检测到Python版本 {version_str} >= 3.14，当前版本不可用")
+            return False, version_str
+        
+        # 检查版本是否 >= 3.8 且 < 3.14
         if major > 3 or (major == 3 and minor >= 8):
             return True, version_str
         else:
@@ -180,7 +185,7 @@ def main():
             print(f"Python版本不符合要求: {python_exe} (版本 {version})")
     
     if not suitable_python:
-        print("未找到符合要求的Python版本 (需要 >= 3.8.0)")
+        print("未找到符合要求的Python版本 (需要 >= 3.8.0 且 < 3.14.0)")
         input("按回车键退出...")
         sys.exit(1)
     
