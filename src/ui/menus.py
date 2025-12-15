@@ -62,14 +62,20 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         self.console.print(f"[italic]{self.daily_quote} | [R] {self.symbols['refresh']} 刷新[/italic]", style=self.colors["header"])
         self.console.print(f"\n{self.symbols['rocket']} 麦麦核心启动器控制台", style=self.colors["header"])
         self.console.print("——————————", style=self.colors["border"])
-        self.console.print("选择选项", style=self.colors["border"])
 
-    def show_main_menu(self):
-        """显示主菜单"""
+    def show_main_menu(self, has_active_instance: bool = False):
+        """显示主菜单
+        
+        Args:
+            has_active_instance: 是否有活跃实例，用于决定显示"运行实例"还是"实例多开"
+        """
         self.print_header()
         
         self.console.print("====>>启动类<<====")
-        self.console.print(f" [A] {self.symbols['rocket']} 运行实例", style=self.colors["success"])
+        if has_active_instance:
+            self.console.print(f" [A] {self.symbols['rocket']} 实例多开", style=self.colors["success"])
+        else:
+            self.console.print(f" [A] {self.symbols['rocket']} 运行实例", style=self.colors["success"])
         
         self.console.print("====>>配置类<<====")
         self.console.print(f" [B] {self.symbols['config']} 配置管理（新建/修改/检查配置）", style=self.colors["warning"])
