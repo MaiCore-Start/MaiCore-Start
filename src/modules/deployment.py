@@ -587,13 +587,15 @@ class DeploymentManager:
         try:
             ui.console.print("\n[🌐 WebUI安装检查]", style=ui.colors["primary"])
             
-            # 获取安装目录
-            install_dir = deploy_config.get("install_dir", "")
+            # 获取实例目录 - bot_path 是 Bot 主程序路径 (例如: D:/instances/test_instance/MaiBot)
+            # 实例目录应该是其父目录 (例如: D:/instances/test_instance)
+            instance_dir = os.path.dirname(bot_path)
             
-            logger.info("开始WebUI安装检查", install_dir=install_dir, bot_path=bot_path)
+            logger.info("开始WebUI安装检查", instance_dir=instance_dir, bot_path=bot_path)
             
-            # 调用WebUI安装器进行直接安装，传入虚拟环境路径
-            success, webui_path = webui_installer.install_webui_directly(install_dir, venv_path)
+            # 调用WebUI安装器进行直接安装，传入Bot主程序路径
+            # WebUI安装器内部会使用 os.path.dirname(bot_path) 来获取实例目录
+            success, webui_path = webui_installer.install_webui_directly(bot_path, venv_path)
             
             if success:
                 ui.print_success("✅ WebUI安装检查完成")

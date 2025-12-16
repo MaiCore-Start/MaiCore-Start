@@ -256,18 +256,26 @@ def main():
                     print(f"{description}时发生异常: {str(e)}")
                     return False
             
-            # 使用uv或pip安装依赖
+            # 优先使用uv安装依赖
             if is_uv_available():
-                print("使用uv安装依赖...")
-                # 使用uv安装依赖
+                print("检测到uv包管理器，将优先使用uv安装依赖...")
+                # 使用uv安装依赖（更快的包管理器）
                 install_cmd = [
                     "uv", "pip", "install", "-r", requirements_path,
                     "-i", "https://pypi.tuna.tsinghua.edu.cn/simple",
                     "--python", venv_python
                 ]
                 success = run_command_with_output(install_cmd, "使用uv安装依赖")
+                
+                if success:
+                    print("✅ uv依赖安装完成!")
+                else:
+                    print("⚠️ uv安装失败，尝试使用pip...")
+                    # uv失败后回退到pip
+                    install_cmd = [venv_python, "-m", "pip", "install", "-r", requirements_path, "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"]
+                    success = run_command_with_output(install_cmd, "使用pip安装依赖")
             else:
-                print("未找到uv，使用pip安装依赖...")
+                print("未检测到uv，使用pip安装依赖...")
                 # 回退到pip
                 install_cmd = [venv_python, "-m", "pip", "install", "-r", requirements_path, "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"]
                 success = run_command_with_output(install_cmd, "使用pip安装依赖")
