@@ -43,7 +43,7 @@ echo.
 echo "版本信息："
 echo "  版本号: v4.1.2-beta"
 echo "  构建时间: 2025-12-13"
-echo "  开发者: xiaoCZX、一闪"
+echo "  开发者: xiaoCZX、一闪、Lui"
 echo.
 echo "使用方法："
 echo "  mcs411b              - 启动程序"

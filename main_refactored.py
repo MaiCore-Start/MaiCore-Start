@@ -302,13 +302,14 @@ class MaiMaiLauncher:
         ui.console.print("麦麦核心启动器控制台", style=ui.colors["primary"])
         ui.console.print("=================")
         
-        ui.console.print("版本：V4.1.0-date", style=ui.colors["info"])
+        ui.console.print("版本：V4.1.2-beta", style=ui.colors["info"])
         ui.console.print("新增亮点：", style=ui.colors["success"])
         ui.console.print("  • 模块化部署逻辑", style="white")
         ui.console.print("  • 精确的资源监控器", style="white")
         ui.console.print("  • 丰富的可自定义UI界面（rich）", style="white")
         ui.console.print("  • 改进的错误处理", style="white")
-        ui.console.print("  • 更多的新增功能", style="white")
+        ui.console.print("  • 实例多开端口自动分配", style="white")
+        ui.console.print("  • 代理功能", style="white")
         
         ui.console.print("\n技术栈：", style=ui.colors["info"])
         ui.console.print("  • Python 3.12.8", style="white")
@@ -324,7 +325,7 @@ class MaiMaiLauncher:
         ui.console.print("\n感谢以下为此项目做出贡献的开发者：", style=ui.colors["header"])
         ui.console.print("  • 小城之雪（xiaoCZX） - 整个项目的提出者和主要开发者", style="white")
         ui.console.print("  • 一闪 - 为此项目的v4.0版本重构提供了大量支持", style="white")
-        ui.console.print("  • 其他贡献者", style="white")
+        ui.console.print("  • 其他贡献者：Lui", style="white")
 
         ui.pause()
 
