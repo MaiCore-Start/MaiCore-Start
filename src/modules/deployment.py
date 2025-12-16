@@ -366,9 +366,10 @@ class DeploymentManager:
                 paths["adapter_path"] = "内置适配器"
         elif bot_type == "MoFox_bot":
             ui.print_info("检测到MoFox_bot，将记录内置适配器路径")
-            # 修改：适配器安装到主程序的同父级目录下，而非主程序目录下
-            bot_parent_dir = os.path.dirname(paths[bot_path_key])
-            paths["adapter_path"] = os.path.join(bot_parent_dir, "MoFox_bot-Adapter")
+            # 使用实例名称目录作为适配器路径，与新的目录结构保持一致
+            nickname = deploy_config.get("nickname", "MoFox_bot_instance")
+            instance_dir = os.path.join(deploy_config["install_dir"], nickname)
+            paths["adapter_path"] = os.path.join(instance_dir, "MoFox_bot-Adapter")
 
         # 步骤3：安装NapCat
         if deploy_config.get("install_napcat") and deploy_config.get("napcat_version"):
@@ -586,13 +587,15 @@ class DeploymentManager:
         try:
             ui.console.print("\n[🌐 WebUI安装检查]", style=ui.colors["primary"])
             
-            # 获取安装目录
-            install_dir = deploy_config.get("install_dir", "")
+            # 获取实例目录 - bot_path 是 Bot 主程序路径 (例如: D:/instances/test_instance/MaiBot)
+            # 实例目录应该是其父目录 (例如: D:/instances/test_instance)
+            instance_dir = os.path.dirname(bot_path)
             
-            logger.info("开始WebUI安装检查", install_dir=install_dir, bot_path=bot_path)
+            logger.info("开始WebUI安装检查", instance_dir=instance_dir, bot_path=bot_path)
             
-            # 调用WebUI安装器进行直接安装，传入虚拟环境路径
-            success, webui_path = webui_installer.install_webui_directly(install_dir, venv_path)
+            # 调用WebUI安装器进行直接安装，传入Bot主程序路径
+            # WebUI安装器内部会使用 os.path.dirname(bot_path) 来获取实例目录
+            success, webui_path = webui_installer.install_webui_directly(bot_path, venv_path)
             
             if success:
                 ui.print_success("✅ WebUI安装检查完成")

@@ -18,6 +18,7 @@ import structlog
 from tqdm import tqdm
 from ..ui.interface import ui
 from ..utils.common import validate_path
+from ..utils.notifier import windows_notifier
 
 # 忽略SSL警告（用于GitHub API访问）
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
@@ -290,94 +291,199 @@ class WebUIInstaller:
         if os.path.exists(local_bin):
             return local_bin
         return None
-    def get_webui_branches(self) -> List[Dict]:
-        """获取WebUI分支列表"""
-        try:
-            ui.print_info("正在获取WebUI分支列表...")
-            
-            url = f"https://api.github.com/repos/{self.webui_repo}/branches"
-            response = requests.get(url, timeout=30, verify=False)  # 跳过SSL验证
-            response.raise_for_status()
-            
-            branches_data = response.json()
-            branches = []
-            
-            for branch in branches_data:
-                branch_info = {
-                    "name": branch["name"],
-                    "display_name": branch["name"],
-                    "commit_sha": branch["commit"]["sha"][:7],
-                    "download_url": f"https://github.com/{self.webui_repo}/archive/refs/heads/{branch['name']}.zip"
-                }
-                branches.append(branch_info)
-            
-            logger.info("获取WebUI分支列表成功", count=len(branches))
-            return branches
-            
-        except Exception as e:
-            ui.print_error(f"获取WebUI分支列表失败：{str(e)}")
-            logger.error("获取WebUI分支列表失败", error=str(e))
-            return []
+    def get_webui_branches(self, max_retries: int = 3) -> List[Dict]:
+        """获取WebUI分支列表，支持重试机制"""
+        for attempt in range(max_retries):
+            try:
+                if attempt == 0:
+                    ui.print_info("正在获取WebUI分支列表...")
+                else:
+                    ui.print_info(f"重试获取WebUI分支列表... (尝试 {attempt + 1}/{max_retries})")
+                
+                url = f"https://api.github.com/repos/{self.webui_repo}/branches"
+                response = requests.get(url, timeout=30, verify=False)  # 跳过SSL验证
+                response.raise_for_status()
+                
+                branches_data = response.json()
+                branches = []
+                
+                for branch in branches_data:
+                    branch_info = {
+                        "name": branch["name"],
+                        "display_name": branch["name"],
+                        "commit_sha": branch["commit"]["sha"][:7],
+                        "download_url": f"https://github.com/{self.webui_repo}/archive/refs/heads/{branch['name']}.zip"
+                    }
+                    branches.append(branch_info)
+                
+                logger.info("获取WebUI分支列表成功", count=len(branches))
+                return branches
+                
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 403:
+                    # GitHub API 速率限制
+                    if attempt < max_retries - 1:
+                        wait_time = (attempt + 1) * 2  # 指数退避：2, 4, 6秒
+                        ui.print_warning(f"GitHub API速率限制，等待{wait_time}秒后重试...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        ui.print_error(f"获取WebUI分支列表失败：GitHub API速率限制，已重试{max_retries}次")
+                        ui.print_info("您可以：")
+                        ui.console.print("  1. 等待几分钟后重试")
+                        ui.console.print("  2. 使用VPN或代理")
+                        ui.console.print("  3. 手动输入分支名称（如果知道）")
+                        logger.error("获取WebUI分支列表失败", error=str(e))
+                        return []
+                else:
+                    ui.print_error(f"获取WebUI分支列表失败：{str(e)}")
+                    logger.error("获取WebUI分支列表失败", error=str(e))
+                    return []
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2
+                    ui.print_warning(f"获取失败，等待{wait_time}秒后重试... ({str(e)})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    ui.print_error(f"获取WebUI分支列表失败：{str(e)}")
+                    logger.error("获取WebUI分支列表失败", error=str(e))
+                    return []
+        
+        # 所有重试都失败了
+        ui.print_error(f"获取WebUI分支列表失败：已重试{max_retries}次，请检查网络连接或稍后重试")
+        return []
     
     def show_webui_branch_menu(self) -> Optional[Dict]:
-        """显示WebUI分支选择菜单"""
-        try:
-            ui.clear_screen()
-            ui.console.print("[🌐 选择控制面板分支]", style=ui.colors["primary"])
-            ui.console.print("="*40)
-            
-            branches = self.get_webui_branches()
-            if not branches:
-                ui.print_error("无法获取WebUI分支信息")
-                return None
-            
-            # 创建分支表格
-            from rich.table import Table
-            table = Table(show_header=True, header_style="bold magenta")
-            table.add_column("选项", style="cyan", width=6)
-            table.add_column("分支名", style="white", width=20)
-            table.add_column("提交SHA", style="yellow", width=10)
-            table.add_column("说明", style="green")
-            
-            for i, branch in enumerate(branches, 1):
-                description = "主分支" if branch["name"] == "main" else f"{branch['name']}分支"
-                table.add_row(
-                    f"[{i}]",
-                    branch["display_name"],
-                    branch["commit_sha"],
-                    description
-                )
-            
-            ui.console.print(table)
-            ui.console.print("\n[Q] 跳过控制面板安装", style="#7E1DE4")
-            
-            while True:
-                choice = ui.get_input("请选择WebUI分支：").strip()
+        """显示WebUI分支选择菜单，支持手动重试"""
+        while True:
+            try:
+                ui.clear_screen()
+                ui.console.print("[🌐 选择控制面板分支]", style=ui.colors["primary"])
+                ui.console.print("="*40)
                 
-                if choice.upper() == 'Q':
-                    return None
-                
-                try:
-                    choice_idx = int(choice) - 1
-                    if 0 <= choice_idx < len(branches):
-                        selected_branch = branches[choice_idx]
-                        ui.print_success(f"已选择：{selected_branch['display_name']}")
-                        return selected_branch
-                    else:
-                        ui.print_error("选项超出范围")
-                except ValueError:
-                    ui.print_error("请输入有效的数字")
+                branches = self.get_webui_branches()
+                if not branches:
+                    ui.print_error("无法获取WebUI分支信息")
                     
-        except Exception as e:
-            ui.print_error(f"显示WebUI分支菜单失败：{str(e)}")
-            logger.error("显示WebUI分支菜单失败", error=str(e))
-            return None
+                    # 提供重试选项
+                    ui.console.print("\n[重试选项]", style=ui.colors["info"])
+                    ui.console.print("[R] 重试获取分支列表")
+                    ui.console.print("[M] 手动输入分支名称")
+                    ui.console.print("[Q] 跳过控制面板安装")
+                    
+                    while True:
+                        choice = ui.get_input("请选择操作：").strip().upper()
+                        
+                        if choice == 'R':
+                            # 重新获取分支列表
+                            break
+                        elif choice == 'M':
+                            # 手动输入分支名称
+                            branch_name = ui.get_input("请输入分支名称（如：main, dev等）：").strip()
+                            if branch_name:
+                                # 创建手动分支信息
+                                manual_branch = {
+                                    "name": branch_name,
+                                    "display_name": branch_name,
+                                    "commit_sha": "unknown",
+                                    "download_url": f"https://github.com/{self.webui_repo}/archive/refs/heads/{branch_name}.zip"
+                                }
+                                ui.print_success(f"已选择：{manual_branch['display_name']}")
+                                return manual_branch
+                            else:
+                                ui.print_error("分支名称不能为空")
+                        elif choice == 'Q':
+                            return None
+                        else:
+                            ui.print_error("请输入有效的选项")
+                    
+                    # 继续循环，重新获取分支列表
+                    continue
+                
+                # 在显示分支选择之前发送通知提醒用户
+                windows_notifier.send(
+                    "即将选择控制面板分支",
+                    "请选择要安装的MaiBot控制面板分支，建议选择master分支以获得最新稳定版本..."
+                )
+                
+                # 创建分支表格
+                from rich.table import Table
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("选项", style="cyan", width=6)
+                table.add_column("分支名", style="white", width=20)
+                table.add_column("提交SHA", style="yellow", width=10)
+                table.add_column("说明", style="green")
+                
+                for i, branch in enumerate(branches, 1):
+                    description = "主分支" if branch["name"] == "main" else f"{branch['name']}分支"
+                    table.add_row(
+                        f"[{i}]",
+                        branch["display_name"],
+                        branch["commit_sha"],
+                        description
+                    )
+                
+                ui.console.print(table)
+                ui.console.print("\n[R] 刷新分支列表  [M] 手动输入分支  [Q] 跳过控制面板安装", style="#7E1DE4")
+                
+                while True:
+                    choice = ui.get_input("请选择WebUI分支：").strip().upper()
+                    
+                    if choice == 'Q':
+                        return None
+                    elif choice == 'R':
+                        # 刷新分支列表，重新获取
+                        break
+                    elif choice == 'M':
+                        # 手动输入分支名称
+                        branch_name = ui.get_input("请输入分支名称（如：main, dev等）：").strip()
+                        if branch_name:
+                            # 创建手动分支信息
+                            manual_branch = {
+                                "name": branch_name,
+                                "display_name": branch_name,
+                                "commit_sha": "unknown",
+                                "download_url": f"https://github.com/{self.webui_repo}/archive/refs/heads/{branch_name}.zip"
+                            }
+                            ui.print_success(f"已选择：{manual_branch['display_name']}")
+                            return manual_branch
+                        else:
+                            ui.print_error("分支名称不能为空")
+                    else:
+                        try:
+                            choice_idx = int(choice) - 1
+                            if 0 <= choice_idx < len(branches):
+                                selected_branch = branches[choice_idx]
+                                ui.print_success(f"已选择：{selected_branch['display_name']}")
+                                return selected_branch
+                            else:
+                                ui.print_error("选项超出范围")
+                        except ValueError:
+                            ui.print_error("请输入有效的数字或选项")
+                
+                # 如果用户选择刷新，重新获取分支列表
+                if choice.upper() == 'R':
+                    continue
+                    
+            except Exception as e:
+                ui.print_error(f"显示WebUI分支菜单失败：{str(e)}")
+                logger.error("显示WebUI分支菜单失败", error=str(e))
+                
+                # 提供重试选项
+                if ui.confirm("是否重试显示分支菜单？"):
+                    continue
+                else:
+                    return None
     
-    def download_webui(self, branch_info: Dict, install_dir: str) -> Optional[str]:
+    def download_webui(self, branch_info: Dict, instance_dir: str) -> Optional[str]:
         """下载并安装MaiBot控制面板源码。"""
         try:
             ui.print_info(f"正在下载控制面板 {branch_info['display_name']}...")
-            os.makedirs(install_dir, exist_ok=True)
+            
+            # 控制面板应该安装在实例目录下的MaiBot-Dashboard文件夹中
+            target_dir = os.path.join(instance_dir, self.dashboard_dir_name)
+            os.makedirs(instance_dir, exist_ok=True)
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 archive_path = os.path.join(temp_dir, f"dashboard_{branch_info['name']}.zip")
@@ -411,7 +517,6 @@ class WebUIInstaller:
                     return None
 
                 source_dir = os.path.join(extract_dir, extracted_dirs[0])
-                target_dir = os.path.join(install_dir, self.dashboard_dir_name)
                 
                 # 安全地删除已存在的目录，处理文件占用问题
                 if os.path.exists(target_dir):
@@ -536,7 +641,11 @@ class WebUIInstaller:
                 return True, ""
             
             # 下载控制面板
-            webui_dir = self.download_webui(branch_info, install_dir)
+            # 控制面板应该安装在实例目录中
+            # install_dir 是 Bot 主程序的路径 (例如: D:/instances/test_instance/MaiBot)
+            # 实例目录应该是其父目录 (例如: D:/instances/test_instance)
+            instance_dir = os.path.dirname(install_dir)
+            webui_dir = self.download_webui(branch_info, instance_dir)
             if not webui_dir:
                 ui.print_error("控制面板下载失败")
                 return False, ""
@@ -587,7 +696,11 @@ class WebUIInstaller:
                 return False, ""
             
             # 下载控制面板
-            webui_dir = self.download_webui(branch_info, install_dir)
+            # 控制面板应该安装在实例目录中
+            # install_dir 是 Bot 主程序的路径 (例如: D:/instances/test_instance/MaiBot)
+            # 实例目录应该是其父目录 (例如: D:/instances/test_instance)
+            instance_dir = os.path.dirname(install_dir)
+            webui_dir = self.download_webui(branch_info, instance_dir)
             if not webui_dir:
                 ui.print_error("控制面板下载失败")
                 return False, ""

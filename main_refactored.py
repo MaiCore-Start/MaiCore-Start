@@ -302,13 +302,14 @@ class MaiMaiLauncher:
         ui.console.print("麦麦核心启动器控制台", style=ui.colors["primary"])
         ui.console.print("=================")
         
-        ui.console.print("版本：V4.1.0-date", style=ui.colors["info"])
+        ui.console.print("版本：V4.1.2-beta", style=ui.colors["info"])
         ui.console.print("新增亮点：", style=ui.colors["success"])
         ui.console.print("  • 模块化部署逻辑", style="white")
         ui.console.print("  • 精确的资源监控器", style="white")
         ui.console.print("  • 丰富的可自定义UI界面（rich）", style="white")
         ui.console.print("  • 改进的错误处理", style="white")
-        ui.console.print("  • 更多的新增功能", style="white")
+        ui.console.print("  • 实例多开端口自动分配", style="white")
+        ui.console.print("  • 代理功能", style="white")
         
         ui.console.print("\n技术栈：", style=ui.colors["info"])
         ui.console.print("  • Python 3.12.8", style="white")
@@ -324,7 +325,7 @@ class MaiMaiLauncher:
         ui.console.print("\n感谢以下为此项目做出贡献的开发者：", style=ui.colors["header"])
         ui.console.print("  • 小城之雪（xiaoCZX） - 整个项目的提出者和主要开发者", style="white")
         ui.console.print("  • 一闪 - 为此项目的v4.0版本重构提供了大量支持", style="white")
-        ui.console.print("  • 其他贡献者", style="white")
+        ui.console.print("  • 其他贡献者：Lui", style="white")
 
         ui.pause()
 
@@ -1077,13 +1078,25 @@ class MaiMaiLauncher:
             logger.info("用户退出程序")
         return do_exit
 
+    def _has_active_instance(self) -> bool:
+        """检查是否有活跃的实例"""
+        try:
+            # 检查是否有正在运行的进程
+            managed_pids = launcher.get_managed_pids()
+            # 如果有超过1个PID（除了启动器本身），说明有活跃实例
+            return len(managed_pids) > 1
+        except Exception:
+            return False
+    
     def run(self):
         """运行主程序"""
         try:
             logger.info("启动器主循环开始")
             
             while self.running:
-                ui.show_main_menu()
+                # 检查是否有活跃实例来决定菜单显示
+                has_active = self._has_active_instance()
+                ui.show_main_menu(has_active)
                 choice = ui.get_input("请输入选项").upper()
                 
                 logger.debug("用户选择", choice=choice)
@@ -1093,7 +1106,12 @@ class MaiMaiLauncher:
                         continue
                     self._handle_exit_request()
                 elif choice == "A":
-                    self.handle_launch_mai()
+                    if has_active:
+                        # 有活跃实例时，显示实例多开菜单
+                        self.handle_multi_instance_menu()
+                    else:
+                        # 没有活跃实例时，运行正常实例
+                        self.handle_launch_mai()
                 elif choice == "B":
                     self.handle_config_menu()
                 elif choice == "C":
@@ -1138,6 +1156,20 @@ class MaiMaiLauncher:
             if not self._keep_processes_on_exit:
                 launcher.stop_all_processes()
             logger.info("启动器程序结束")
+    
+    def handle_multi_instance_menu(self):
+        """处理实例多开菜单"""
+        try:
+            from src.modules.instance_multi_launcher import instance_multi_launcher
+            instance_multi_launcher.show_multi_instance_menu()
+        except ImportError as e:
+            ui.print_error(f"实例多开模块导入失败：{str(e)}")
+            logger.error("实例多开模块导入失败", error=str(e))
+            ui.pause()
+        except Exception as e:
+            ui.print_error(f"实例多开菜单出错：{str(e)}")
+            logger.error("实例多开菜单异常", error=str(e))
+            ui.pause()
 
 
 def main():

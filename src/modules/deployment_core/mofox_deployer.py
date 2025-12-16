@@ -66,8 +66,13 @@ class MoFoxBotDeployer(BaseDeployer):
             source_dir = os.path.join(temp_dir, extracted_dirs[0])
             
             # 创建目标目录并复制文件
-            os.makedirs(install_dir, exist_ok=True)
-            target_dir = os.path.join(install_dir, "MoFox_bot")
+            # 使用实例名称作为父目录，与MaiBot保持一致
+            nickname = deploy_config.get("nickname", "MoFox_bot_instance")
+            instance_dir = os.path.join(install_dir, nickname)
+            target_dir = os.path.join(instance_dir, "MoFox_bot")
+            
+            # 创建实例目录
+            os.makedirs(instance_dir, exist_ok=True)
             
             # 检查目标目录是否已存在
             if os.path.exists(target_dir):
