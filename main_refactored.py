@@ -1,5 +1,5 @@
 """
-麦麦启动器主程序
+MCStart主程序
 重构版本，使用结构化日志和模块化设计
 """
 import sys
@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 
 
 class MaiMaiLauncher:
-    """麦麦启动器主程序类"""
+    """MCStart主程序类"""
     
     def __init__(self):
         self.running = True
@@ -40,10 +40,10 @@ class MaiMaiLauncher:
         self._tray_restore_event = threading.Event()
         self._tray_exit_event = threading.Event()
         setup_console()
-        logger.info("麦麦启动器已启动")
+        logger.info("MCStart已启动")
     
     def handle_launch_mai(self):
-        """处理启动麦麦"""
+        """处理启动实例的菜单"""
         try:
             ui.clear_screen()
             # 选择配置
@@ -73,7 +73,7 @@ class MaiMaiLauncher:
             
         except Exception as e:
             ui.print_error(f"启动过程出错：{str(e)}")
-            logger.error("启动麦麦异常", error=str(e))
+            logger.error("启动实例异常", error=str(e))
             ui.pause()
     
     def handle_config_menu(self):
@@ -89,7 +89,7 @@ class MaiMaiLauncher:
             if choice == "Q":
                 break
             elif choice == "A":
-                # 自动检索麦麦
+                # 自动检索实例
                 name = ui.get_input("请输入新配置集名称：")
                 if name:
                     configurations = config_manager.get_all_configurations()
@@ -1074,7 +1074,7 @@ class MaiMaiLauncher:
 
         if do_exit:
             self.running = False
-            ui.print_info("感谢使用麦麦启动器！")
+            ui.print_info("感谢使用MCStart！")
             logger.info("用户退出程序")
         return do_exit
 

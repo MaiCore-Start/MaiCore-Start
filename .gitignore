@@ -37,3 +37,7 @@ node_modules
 
 # --- 忽略临时文件夹 ---
 Temporary/
+
+.vs
+
+.vscode/
