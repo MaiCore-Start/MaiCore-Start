@@ -9,16 +9,16 @@ if /i "%1"=="version" goto show_version
 set "CUR_DIR=%~dp0"
 for %%I in ("%CUR_DIR%..") do set "PARENT_DIR=%%~fI"
 
-if not exist "%PARENT_DIR%\MaiCoreStart-v4.1.2-beta.exe" (
-    echo Error: Cannot find MaiCoreStart-v4.1.2-beta.exe
-    echo Expected path: %PARENT_DIR%\MaiCoreStart-v4.1.2-beta.exe
+if not exist "%PARENT_DIR%\MaiCoreStart-v4.1.3-beta.exe" (
+    echo Error: Cannot find MaiCoreStart-v4.1.3-beta.exe
+    echo Expected path: %PARENT_DIR%\MaiCoreStart-v4.1.3-beta.exe
     pause
     exit /b 1
 )
 
 cd /d "%PARENT_DIR%"
-echo Starting MaiCoreStart-v4.1.2-beta.exe...
-start "" "%PARENT_DIR%\MaiCoreStart-v4.1.2-beta.exe"
+echo Starting MaiCoreStart-v4.1.3-beta.exe...
+start "" "%PARENT_DIR%\MaiCoreStart-v4.1.3-beta.exe"
 
 if %errorlevel% equ 0 (
     echo Started successfully!
@@ -32,16 +32,16 @@ goto :eof
 :show_version
 echo.
 echo ========================================
-echo           MaiCoreStart v4.1.2-beta
+echo           MaiCoreStart v4.1.3-beta
 echo ========================================
 echo.
 echo "程序简介："
-echo "  MaiCoreStart 是一个功能强大的启动器程序，"
+echo "  MaiCoreStart 是一个功能强大的麦麦核心启动器程序，"
 echo "  集成了多种组件管理和部署功能，支持多种开发环境。"
 echo "  自动化安装、配置和管理各种开发工具。"
 echo.
 echo "版本信息："
-echo "  版本号: v4.1.2-beta"
+echo "  版本号: v4.1.3-beta"
 echo "  构建时间: 2025-12-13"
 echo "  开发者: xiaoCZX、一闪、Lui"
 echo.
