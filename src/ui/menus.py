@@ -107,7 +107,7 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         self.console.print(panel)
         
         self.console.print("====>>配置新建<<====")
-        self.console.print(f" [A] {self.symbols['new']} 自动检索麦麦", style=self.colors["success"])
+        self.console.print(f" [A] {self.symbols['new']} 自动检索实例", style=self.colors["success"])
         self.console.print(f" [B] {self.symbols['edit']} 手动配置", style=self.colors["success"])
         
         self.console.print("====>>配置管理<<====")

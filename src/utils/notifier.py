@@ -1,6 +1,7 @@
 """Windows notification utilities."""
 from __future__ import annotations
 
+import ctypes
 import logging
 import sys
 import threading
@@ -10,6 +11,24 @@ from typing import Optional
 import structlog
 
 from src.core.p_config import p_config_manager
+
+# Windows FlashWindowEx constants
+FLASHW_STOP = 0
+FLASHW_CAPTION = 1
+FLASHW_TRAY = 2
+FLASHW_ALL = 3
+FLASHW_TIMER = 4
+FLASHW_TIMERNOFG = 12
+
+
+class FLASHWINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_uint),
+        ("hwnd", ctypes.c_void_p),
+        ("dwFlags", ctypes.c_uint),
+        ("uCount", ctypes.c_uint),
+        ("dwTimeout", ctypes.c_uint),
+    ]
 
 try:
     from winotify import Notification, audio  # type: ignore
@@ -36,6 +55,29 @@ class WindowsNotifier:
 
     def is_available(self) -> bool:
         return sys.platform.startswith("win") and WINOTIFY_AVAILABLE
+
+    def _flash_taskbar(self) -> None:
+        """Flash the console window in the taskbar."""
+        if not sys.platform.startswith("win"):
+            return
+
+        try:
+            # 获取控制台窗口句柄
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if not hwnd:
+                return
+
+            fwi = FLASHWINFO()
+            fwi.cbSize = ctypes.sizeof(FLASHWINFO)
+            fwi.hwnd = hwnd
+            # FLASHW_ALL | FLASHW_TIMERNOFG: 闪烁标题栏和任务栏，直到窗口被激活
+            fwi.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG
+            fwi.uCount = 0
+            fwi.dwTimeout = 0
+
+            ctypes.windll.user32.FlashWindowEx(ctypes.byref(fwi))
+        except Exception as e:
+            logger.debug("Failed to flash taskbar", error=str(e))
 
     def is_enabled(self) -> bool:
         enabled = p_config_manager.get("notifications.windows_center_enabled", False)
@@ -77,6 +119,7 @@ class WindowsNotifier:
             toast = Notification(**notification_args)
             toast.set_audio(audio.Default, loop=False)
             toast.show()
+            self._flash_taskbar()
             logger.info("Windows通知发送成功", title=title)
             return True
         except Exception as exc:
