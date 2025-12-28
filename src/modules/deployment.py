@@ -147,7 +147,14 @@ class DeploymentManager:
             return None
 
         # 组件安装选项
-        install_adapter = ui.confirm("是否需要安装适配器？")
+        if bot_type == "MoFox_bot":
+            # MoFox_bot的适配器已经内置，无需下载
+            ui.console.print("\n[🔌 适配器配置]", style=ui.colors["info"])
+            ui.console.print("MoFox_bot的适配器已经内置，无需下载", style="green")
+            install_adapter = False
+        else:
+            install_adapter = ui.confirm("是否需要安装适配器？")
+        
         install_napcat = ui.confirm("是否需要安装NapCat？")
         napcat_version = None
         if install_napcat:
@@ -179,10 +186,12 @@ class DeploymentManager:
         if bot_type == "MaiBot":
             install_webui = ui.confirm("是否需要安装WebUI？")
             install_mofox_admin_ui = False
+            install_mofox_webui = False
         else:
             # MoFox_bot: 永远不要询问是否安装麦麦的webui
             install_webui = False
             install_mofox_admin_ui = False
+            install_mofox_webui = ui.confirm("是否需要安装MoFox WebUI？")
 
         # 安装目录
         default_install_dir = os.path.join(os.getcwd(), "instances")
@@ -282,6 +291,7 @@ class DeploymentManager:
             "mongodb_path": "",
             "install_webui": install_webui,
             "install_mofox_admin_ui": install_mofox_admin_ui,
+            "install_mofox_webui": install_mofox_webui,
             "install_dir": install_dir,
             "nickname": nickname,
             "qq_account": qq_account,
@@ -325,7 +335,13 @@ class DeploymentManager:
         if bot_type == "MaiBot":
             webui_text = "✅" if deploy_config.get("install_webui") else "❌"
         else:
-            webui_text = "✅" if deploy_config.get("install_mofox_admin_ui") else "❌"
+            # MoFox_bot显示不同的WebUI选项
+            if deploy_config.get("install_mofox_admin_ui"):
+                webui_text = "✅ (后台管理WebUI)"
+            elif deploy_config.get("install_mofox_webui"):
+                webui_text = "✅ (MoFox WebUI)"
+            else:
+                webui_text = "❌"
         table.add_row("安装WebUI", webui_text)
         
         ui.console.print(table)
@@ -384,6 +400,10 @@ class DeploymentManager:
             success, paths["webui_path"] = self._install_mofox_admin_ui(deploy_config)
             if not success:
                 ui.print_warning("MoFox_bot后台管理WebUI安装失败，但部署将继续...")
+        elif bot_type == "MoFox_bot" and deploy_config.get("install_mofox_webui"):
+            success, paths["webui_path"] = self.mofox_deployer.install_webui(deploy_config, paths[bot_path_key])
+            if not success:
+                ui.print_warning("MoFox WebUI安装失败，但部署将继续...")
 
         # 步骤5：设置Python环境
         ui.console.print("\n[🐍 第四步：设置Python环境]", style=ui.colors["primary"])
@@ -468,7 +488,8 @@ class DeploymentManager:
             "install_napcat": deploy_config.get("install_napcat", False),
             "install_mongodb": bool(deploy_config.get("mongodb_path", "")),
             "install_webui": deploy_config.get("install_webui", False),
-            "install_mofox_admin_ui": deploy_config.get("install_mofox_admin_ui", False)
+            "install_mofox_admin_ui": deploy_config.get("install_mofox_admin_ui", False),
+            "install_mofox_webui": deploy_config.get("install_mofox_webui", False)
         }
         
         new_config = {
@@ -510,8 +531,25 @@ class DeploymentManager:
         ui.console.print(f"  • 适配器：{'✅' if install_options['install_adapter'] else '❌'}")
         ui.console.print(f"  • NapCat：{'✅' if install_options['install_napcat'] else '❌'}")
         ui.console.print(f"  • MongoDB：{'✅' if install_options['install_mongodb'] else '❌'}")
-        webui_name = "MoFox_bot后台管理WebUI" if bot_type == "MoFox_bot" else "WebUI"
-        webui_installed = install_options.get('install_webui', False) or install_options.get('install_mofox_admin_ui', False)
+        
+        # 根据bot类型显示不同的WebUI
+        if bot_type == "MaiBot":
+            webui_name = "WebUI"
+            webui_installed = install_options.get('install_webui', False)
+        elif bot_type == "MoFox_bot":
+            if install_options.get('install_mofox_admin_ui', False):
+                webui_name = "MoFox_bot后台管理WebUI"
+                webui_installed = True
+            elif install_options.get('install_mofox_webui', False):
+                webui_name = "MoFox WebUI"
+                webui_installed = True
+            else:
+                webui_name = "WebUI"
+                webui_installed = False
+        else:
+            webui_name = "WebUI"
+            webui_installed = False
+            
         ui.console.print(f"  • {webui_name}：{'✅' if webui_installed else '❌'}")
         
         ui.print_success("✅ 部署配置完成")

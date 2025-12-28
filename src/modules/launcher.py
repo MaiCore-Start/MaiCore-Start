@@ -564,7 +564,20 @@ class _MaiComponent(_LaunchComponent):
     
     def start(self, process_manager: _ProcessManager) -> bool:
         ui.print_info(f"尝试启动{self.name}...")
-        return super().start(process_manager)
+        success = super().start(process_manager)
+        
+        # 如果是MoFox_bot且安装了WebUI，启动后自动打开浏览器
+        if success and self.config.get("bot_type") == "MoFox_bot":
+            has_webui = self.config.get("install_options", {}).get("install_mofox_webui", False)
+            if has_webui:
+                ui.print_info("检测到MoFox WebUI已安装，WebUI将随主程序自动启动")
+                ui.print_info("正在打开浏览器访问 http://localhost:12138 ...")
+                try:
+                    webbrowser.open("http://localhost:12138")
+                except Exception as exc:
+                    ui.print_warning(f"自动打开浏览器失败，请手动访问 http://localhost:12138 ({exc})")
+        
+        return success
 
 
 # --- 主启动器类 ---
@@ -696,12 +709,23 @@ class MaiLauncher:
                 menu_options["5"] = ("主程序+适配器+控制面板", ["mai", "adapter", "webui"])
                 menu_options["6"] = ("主程序+适配器+NapCat+控制面板", ["mai", "adapter", "napcat", "webui"])
         elif bot_type == "MoFox_bot":
-            menu_options = {
-                "1": ("主程序", ["mai"]),
-                "2": ("主程序+适配器", ["mai", "adapter"]),
-                "3": ("主程序+NapCatQQ", ["mai", "napcat"]),
-                "4": ("主程序+适配器+NapCatQQ", ["mai", "adapter", "napcat"]),
-            }
+            # 检查是否安装了MoFox WebUI
+            has_mofox_webui = config.get("install_options", {}).get("install_mofox_webui", False)
+            
+            if has_mofox_webui:
+                menu_options = {
+                    "1": ("主程序+WebUI", ["mai"]),
+                    "2": ("主程序+适配器+WebUI", ["mai", "adapter"]),
+                    "3": ("主程序+NapCatQQ+WebUI", ["mai", "napcat"]),
+                    "4": ("主程序+适配器+NapCatQQ+WebUI", ["mai", "adapter", "napcat"]),
+                }
+            else:
+                menu_options = {
+                    "1": ("主程序", ["mai"]),
+                    "2": ("主程序+适配器", ["mai", "adapter"]),
+                    "3": ("主程序+NapCatQQ", ["mai", "napcat"]),
+                    "4": ("主程序+适配器+NapCatQQ", ["mai", "adapter", "napcat"]),
+                }
         else:
             # 默认或未知bot类型的菜单
             menu_options = {

@@ -74,7 +74,7 @@ class BaseDeployer:
     
     def install_dependencies_in_venv(self, venv_path: str, requirements_path: str) -> bool:
         """
-        在虚拟环境中安装依赖
+        在虚拟环境中安装依赖，优先使用uv
         
         Args:
             venv_path: 虚拟环境路径
@@ -96,6 +96,48 @@ class BaseDeployer:
                 subprocess.run(["uv", "--version"], capture_output=True, check=True)
                 return True
             except (subprocess.CalledProcessError, FileNotFoundError):
+                return False
+        
+        def install_uv() -> bool:
+            """尝试安装uv包管理器"""
+            try:
+                ui.print_info("正在尝试安装uv包管理器...")
+                
+                # 获取系统Python路径
+                if platform.system() == "Windows":
+                    python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                else:
+                    python_exe = os.path.join(venv_path, "bin", "python")
+                
+                # 使用pip安装uv
+                install_cmd = [python_exe, "-m", "pip", "install", "uv"]
+                
+                process = subprocess.Popen(
+                    install_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                if process.stdout:
+                    for line in process.stdout:
+                        line = line.strip()
+                        if line:
+                            print(f"  {line}")
+                
+                process.wait()
+                
+                if process.returncode == 0:
+                    ui.print_success("uv安装成功！")
+                    return True
+                else:
+                    ui.print_warning("uv安装失败")
+                    return False
+                    
+            except Exception as e:
+                ui.print_warning(f"安装uv时发生错误: {str(e)}")
                 return False
         
         def run_command_with_output(cmd: List[str], description: str) -> bool:
@@ -157,8 +199,15 @@ class BaseDeployer:
             # 检查是否可用uv
             use_uv = is_uv_available()
             
+            if not use_uv:
+                ui.print_info("未检测到uv包管理器，尝试自动安装...")
+                if install_uv():
+                    use_uv = True
+                else:
+                    ui.print_warning("uv安装失败，将使用pip安装")
+            
             if use_uv:
-                ui.print_info("检测到uv包管理器，将使用uv加速安装")
+                ui.print_info("使用uv包管理器加速安装依赖")
                 success = False
                 
                 # 尝试使用不同镜像源

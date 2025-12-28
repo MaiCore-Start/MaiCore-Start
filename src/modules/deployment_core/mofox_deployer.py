@@ -7,11 +7,12 @@ import os
 import re
 import shutil
 import tempfile
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import structlog
 
 from .base_deployer import BaseDeployer
 from .version_manager import VersionManager
+from .mofox_webui_deployer import MoFoxWebUIDeployer
 from ...ui.interface import ui
 
 logger = structlog.get_logger(__name__)
@@ -24,6 +25,7 @@ class MoFoxBotDeployer(BaseDeployer):
         super().__init__()
         self.repo = "MoFox-Studio/MoFox_Bot"
         self.version_manager = VersionManager(self.repo)
+        self.webui_deployer = MoFoxWebUIDeployer()
     
     def install_bot(self, deploy_config: Dict) -> Optional[str]:
         """
@@ -202,3 +204,37 @@ class MoFoxBotDeployer(BaseDeployer):
             ui.print_error(f"配置文件设置失败: {str(e)}")
             logger.error("配置文件设置失败", error=str(e))
             return False
+    
+    def install_webui(self, deploy_config: Dict, bot_path: str) -> Tuple[bool, str]:
+        """
+        安装MoFox WebUI
+        
+        Args:
+            deploy_config: 部署配置
+            bot_path: MoFox_bot路径
+            
+        Returns:
+            (是否成功, WebUI路径)
+        """
+        ui.console.print("\n[🌐 MoFox WebUI安装]", style=ui.colors["primary"])
+        
+        try:
+            # 检查是否需要安装WebUI
+            if not deploy_config.get("install_mofox_webui", False):
+                ui.print_info("用户选择不安装MoFox WebUI")
+                return True, ""
+            
+            # 使用WebUI部署器安装
+            success, webui_path = self.webui_deployer.install_webui(deploy_config, bot_path)
+            
+            if success:
+                ui.print_success("✅ MoFox WebUI安装完成")
+                return True, webui_path
+            else:
+                ui.print_error("❌ MoFox WebUI安装失败")
+                return False, ""
+                
+        except Exception as e:
+            ui.print_error(f"MoFox WebUI安装失败: {str(e)}")
+            logger.error("MoFox WebUI安装失败", error=str(e))
+            return False, ""
