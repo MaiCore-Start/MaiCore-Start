@@ -127,11 +127,11 @@ class MaiMaiLauncher:
                 break
             
             
-            choice = ui.get_choice("请选择操作", ["A", "B", "C", "D", "E", "F", "G", "Q"])
+            choice = ui.get_choice("请选择操作", ["A", "B", "C", "D", "E", "F", "G", "H", "Q"])
             
             if choice == "Q":
                 break
-            elif choice in ["A", "B", "D", "G"]:
+            elif choice in ["A", "B", "D", "G", "H"]:
                 # 需要选择配置的操作
                 config = config_mgr.select_configuration()
                 if not config:
@@ -171,6 +171,10 @@ class MaiMaiLauncher:
                 elif choice == "G":
                     # 打开配置文件
                     config_mgr.open_config_files(config)
+                    ui.pause()
+                elif choice == "H":
+                    # 打开实例所在目录
+                    config_mgr.open_instance_folder(config)
                     ui.pause()
             
             elif choice == "C":

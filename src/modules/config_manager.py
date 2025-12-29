@@ -720,6 +720,32 @@ class ConfigManager:
             open_files_in_editor(files_to_open)
         else:
             ui.print_warning("未找到任何可供打开的配置文件。")
+    
+    def open_instance_folder(self, config: Dict[str, Any]):
+        """打开选中配置的实例所在目录"""
+        import subprocess
+        import os
+
+        bot_type = config.get("bot_type", "MaiBot")
+        bot_path_key = "mai_path" if bot_type == "MaiBot" else "mofox_path"
+        bot_path = config.get(bot_path_key)
+
+        if not bot_path or not os.path.exists(bot_path):
+            ui.print_error("当前配置的Bot路径无效或不存在。")
+            return
+
+        try:
+            # 获取实例文件夹路径（bot_path的父目录）
+            instance_folder = os.path.dirname(bot_path)
+            if os.path.exists(instance_folder):
+                # 使用Windows的explorer命令打开文件夹
+                # 注意：explorer命令在某些情况下会返回非零状态码，但文件夹确实被打开了
+                result = subprocess.run(["explorer", instance_folder], capture_output=True)
+                ui.print_success(f"已在Windows资源管理器中打开文件夹: {instance_folder}")
+            else:
+                ui.print_error(f"实例文件夹不存在: {instance_folder}")
+        except Exception as e:
+            ui.print_error(f"打开文件夹时发生错误: {str(e)}")
         
 # 全局配置管理器实例
 config_mgr = ConfigManager()

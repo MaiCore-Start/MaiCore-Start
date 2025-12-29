@@ -619,6 +619,21 @@ class DeploymentManager:
 
             if files_to_open:
                 open_files_in_editor(files_to_open)
+        
+        # 询问是否在Windows资源管理器中打开实例文件夹
+        if ui.confirm("\n是否在Windows资源管理器中打开实例所在文件夹？"):
+            try:
+                # 获取实例文件夹路径（bot_path的父目录）
+                instance_folder = os.path.dirname(bot_path)
+                if os.path.exists(instance_folder):
+                    # 使用Windows的explorer命令打开文件夹
+                    # 注意：explorer命令在某些情况下会返回非零状态码，但文件夹确实被打开了
+                    result = subprocess.run(["explorer", instance_folder], capture_output=True)
+                    ui.print_success(f"已在Windows资源管理器中打开文件夹: {instance_folder}")
+                else:
+                    ui.print_error(f"实例文件夹不存在: {instance_folder}")
+            except Exception as e:
+                ui.print_error(f"打开文件夹时发生错误: {str(e)}")
     
     def _check_and_install_webui(self, deploy_config: Dict, bot_path: str, venv_path: str = "") -> Tuple[bool, str]:
         """检查并安装WebUI（如果需要）"""
