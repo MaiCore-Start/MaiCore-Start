@@ -32,7 +32,7 @@ goto :eof
 :show_version
 echo.
 echo ========================================
-echo           MaiCoreStart v4.1.3-beta
+echo           MaiCoreStart v4.1.4-beta
 echo ========================================
 echo.
 echo "程序简介："
@@ -41,7 +41,7 @@ echo "  集成了多种组件管理和部署功能，支持多种开发环境。
 echo "  自动化安装、配置和管理各种开发工具。"
 echo.
 echo "版本信息："
-echo "  版本号: v4.1.3-beta"
+echo "  版本号: v4.1.4-beta"
 echo "  构建时间: 2025-12-13"
 echo "  开发者: xiaoCZX、一闪、Lui"
 echo.
