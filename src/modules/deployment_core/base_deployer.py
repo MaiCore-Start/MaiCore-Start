@@ -359,10 +359,10 @@ class BaseDeployer:
                 with open(filename, 'wb') as f:
                     if total_size > 0:
                         # 使用Rich的进度条显示下载进度
-                        from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn
-                        from rich.console import Console
+                        from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn, SpinnerColumn
                         
                         with Progress(
+                            SpinnerColumn(),
                             TextColumn("[bold blue]{task.description}"),
                             BarColumn(),
                             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
@@ -373,24 +373,33 @@ class BaseDeployer:
                             TextColumn("•"),
                             TransferSpeedColumn(),
                             console=ui.console,
-                            transient=False
+                            transient=True,
+                            refresh_per_second=10
                         ) as progress:
                             task = progress.add_task(f"下载 {file_basename}", total=total_size)
                             
+                            downloaded = 0
                             for chunk in response.iter_content(chunk_size=8192):
                                 if chunk:
                                     f.write(chunk)
+                                    downloaded += len(chunk)
                                     progress.update(task, advance=len(chunk))
+                            
+                            # 确保进度条显示100%
+                            progress.update(task, completed=total_size)
                     else:
                         # 如果没有文件大小信息，使用简单的进度显示
                         downloaded = 0
+                        last_reported = 0
                         for chunk in response.iter_content(chunk_size=8192):
                             if chunk:
                                 f.write(chunk)
                                 downloaded += len(chunk)
                                 # 每下载1MB显示一次进度
-                                if downloaded % (1024 * 1024) == 0:
-                                    ui.print_info(f"已下载: {downloaded / (1024 * 1024):.1f} MB")
+                                if downloaded - last_reported >= (1024 * 1024):
+                                    size_mb = downloaded / (1024 * 1024)
+                                    ui.print_info(f"已下载: {size_mb:.1f} MB")
+                                    last_reported = downloaded
                 
                 ui.print_success(f"下载完成: {file_basename}")
                 logger.info("文件下载成功", url=url, filename=filename)

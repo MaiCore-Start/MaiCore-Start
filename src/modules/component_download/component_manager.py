@@ -20,6 +20,7 @@ from .python_downloader import PythonDownloader
 from .mongodb_downloader import MongoDBDownloader
 from .sqlitestudio_downloader import SQLiteStudioDownloader
 from .napcat_downloader import NapCatDownloader
+from .webui_downloader import WebUIDownloader
 
 logger = structlog.get_logger(__name__)
 
@@ -37,7 +38,8 @@ class ComponentManager:
             'python': PythonDownloader(),
             'mongodb': MongoDBDownloader(),
             'sqlitestudio': SQLiteStudioDownloader(),
-            'napcat': NapCatDownloader()
+            'napcat': NapCatDownloader(),
+            'webui': WebUIDownloader()
         }
         
         # 组件信息
@@ -81,6 +83,11 @@ class ComponentManager:
                 'name': 'NapCat',
                 'description': 'QQ机器人适配器',
                 'icon': '🐱'
+            },
+            'webui': {
+                'name': 'MaiBot WebUI',
+                'description': 'MaiBot控制面板Web界面',
+                'icon': '🌐'
             }
         }
     
@@ -191,7 +198,8 @@ class ComponentManager:
                 'python': ['python*.exe', 'python*.msi'],
                 'mongodb': ['mongodb*.exe', 'mongodb*.msi'],
                 'sqlitestudio': ['SQLiteStudio*.exe', 'SQLiteStudio*.zip'],
-                'napcat': ['NapCat*.zip']
+                'napcat': ['NapCat*.zip'],
+                'webui': ['webui*.zip']
             }
             
             if component_key in patterns:

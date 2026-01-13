@@ -841,8 +841,9 @@ class KnowledgeBuilder:
             return False
         
         # 检查版本
-        from ..utils.version_detector import is_legacy_version
-        if not is_legacy_version(version):
+        from ..utils.version_detector import is_legacy_version_with_bot_type
+        bot_type = config.get("bot_type", "MaiBot")
+        if not is_legacy_version_with_bot_type(version, bot_type):
             ui.print_error("此功能仅适用于0.6.0-alpha及更早版本")
             return False
         

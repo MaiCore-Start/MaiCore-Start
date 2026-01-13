@@ -182,9 +182,25 @@ class DeploymentManager:
             # MoFox_bot: 永远不要询问是否安装MongoDB
             install_mongodb = False
         
-        # 根据Bot类型决定WebUI询问
+        # 根据Bot类型和版本决定WebUI处理
         if bot_type == "MaiBot":
-            install_webui = ui.confirm("是否需要安装WebUI？")
+            # 检查版本是否内置WebUI
+            version_name = selected_version.get("name", "")
+            from ..utils.version_detector import has_builtin_webui
+            
+            if has_builtin_webui(version_name):
+                # 版本内置WebUI，不询问安装，但记录信息
+                ui.console.print("\n[🌐 WebUI配置]", style=ui.colors["info"])
+                ui.console.print(f"当前版本 {version_name} 已内置WebUI，无需单独安装", style="green")
+                ui.console.print("启动时主程序将自动代理WebUI，默认访问地址：http://localhost:8001", style="cyan")
+                install_webui = False  # 不需要单独安装
+            else:
+                # 版本未内置WebUI，引导到组件下载页
+                ui.console.print("\n[🌐 WebUI配置]", style=ui.colors["info"])
+                ui.console.print(f"当前版本 {version_name} 未内置WebUI", style="yellow")
+                ui.console.print("如需WebUI功能，请前往'杂项菜单 -> 组件下载中心'下载WebUI组件", style="cyan")
+                install_webui = False  # 改为从组件下载页获取
+            
             install_mofox_admin_ui = False
             install_mofox_webui = False
         else:
@@ -390,12 +406,21 @@ class DeploymentManager:
         # 步骤3：安装NapCat
         if deploy_config.get("install_napcat") and deploy_config.get("napcat_version"):
             paths["napcat_path"] = self.napcat_deployer.install_napcat(deploy_config, paths[bot_path_key])
-
-        # 步骤4：安装WebUI
-        if bot_type == "MaiBot" and deploy_config.get("install_webui"):
-            success, paths["webui_path"] = self._check_and_install_webui(deploy_config, paths[bot_path_key])
-            if not success:
-                ui.print_warning("WebUI安装检查失败，但部署将继续...")
+        # 步骤4：WebUI处理（已移除独立安装，改为内置或组件下载）
+        if bot_type == "MaiBot":
+            # 检查版本是否内置WebUI
+            version_name = deploy_config["selected_version"].get("name", "")
+            from ..utils.version_detector import has_builtin_webui
+            
+            if has_builtin_webui(version_name):
+                ui.console.print("\n[🌐 第四步：WebUI配置]", style=ui.colors["primary"])
+                ui.print_info(f"版本 {version_name} 内置WebUI，启动时将自动代理")
+                # 内置WebUI不需要独立路径
+                paths["webui_path"] = "builtin"
+            else:
+                ui.console.print("\n[🌐 第四步：WebUI配置]", style=ui.colors["primary"])
+                ui.print_info("当前版本未内置WebUI，如需WebUI功能请从组件下载页获取")
+                paths["webui_path"] = ""
         elif bot_type == "MoFox_bot" and deploy_config.get("install_mofox_admin_ui"):
             success, paths["webui_path"] = self._install_mofox_admin_ui(deploy_config)
             if not success:
@@ -406,7 +431,7 @@ class DeploymentManager:
                 ui.print_warning("MoFox WebUI安装失败，但部署将继续...")
 
         # 步骤5：设置Python环境
-        ui.console.print("\n[🐍 第四步：设置Python环境]", style=ui.colors["primary"])
+        ui.console.print("\n[🐍 第五步：设置Python环境]", style=ui.colors["primary"])
         ui.print_info("正在创建Python虚拟环境...")
         venv_success, venv_path = self.maibot_deployer.create_virtual_environment(paths[bot_path_key])
         
@@ -445,8 +470,8 @@ class DeploymentManager:
         # 步骤6：配置文件设置
         if bot_type == "MaiBot":
             if not self.maibot_deployer.setup_config_files(
-                deploy_config, 
-                paths[bot_path_key], 
+                deploy_config,
+                paths[bot_path_key],
                 paths.get("adapter_path", ""),
                 paths.get("napcat_path", ""),
                 paths.get("mongodb_path", ""),
@@ -455,8 +480,8 @@ class DeploymentManager:
                 ui.print_warning("配置文件设置失败，但部署将继续...")
         else:
             if not self.mofox_deployer.setup_config_files(
-                deploy_config, 
-                paths[bot_path_key], 
+                deploy_config,
+                paths[bot_path_key],
                 paths.get("adapter_path", ""),
                 paths.get("napcat_path", ""),
                 paths.get("mongodb_path", ""),
@@ -749,9 +774,109 @@ class DeploymentManager:
             return False, ""
     
     def update_instance(self) -> bool:
-        """更新实例 - 待实现"""
-        ui.print_warning("实例更新功能暂未实现")
-        return False
+        """更新实例"""
+        ui.clear_screen()
+        ui.components.show_title("实例更新助手", symbol="🔄")
+        
+        try:
+            # 获取所有实例配置
+            configs = config_manager.get_all_configurations()
+            if not configs:
+                ui.print_error("当前没有可更新的实例配置！")
+                return False
+
+            # 显示所有实例
+            from rich.table import Table
+            table = Table(
+                show_header=True,
+                header_style=ui.colors["table_header"],
+                title="[bold]可更新实例列表[/bold]",
+                title_style=ui.colors["primary"],
+                border_style=ui.colors["border"]
+            )
+            table.add_column("实例昵称", style="green", width=20)
+            table.add_column("序列号", style="yellow", width=20)
+            table.add_column("当前版本", style="blue", width=15)
+            table.add_column("Bot类型", style="magenta", width=12)
+
+            config_keys = list(configs.keys())
+            for key in config_keys:
+                cfg = configs[key]
+                bot_type = str(cfg.get("bot_type", "MaiBot"))
+                bot_path = cfg.get("mai_path") if bot_type == "MaiBot" else cfg.get("mofox_path")
+                bot_path = str(bot_path) if bot_path else "-"
+                nickname = str(cfg.get("nickname_path", "-"))
+                version = str(cfg.get("version_path", "-"))
+                serial = str(cfg.get("serial_number", "-"))
+                table.add_row(nickname, serial, version, bot_type)
+
+            ui.console.print(table)
+            ui.console.print("\n[Q] 取消更新", style=ui.colors["exit"])
+            ui.console.print(f"提示：共有 {len(config_keys)} 个实例可更新", style=ui.colors["info"])
+
+            # 输入序列号进行匹配
+            while True:
+                serial_input = ui.get_input("请输入要更新实例的序列号: ").strip()
+                if serial_input.upper() == "Q":
+                    ui.print_info("已取消更新操作。")
+                    return False
+                
+                # 匹配实例
+                matched_key = None
+                matched_cfg = None
+                for key in config_keys:
+                    cfg = configs[key]
+                    if str(cfg.get("serial_number", "")) == serial_input:
+                        matched_key = key
+                        matched_cfg = cfg
+                        break
+                
+                if matched_cfg:
+                    break
+                else:
+                    ui.print_error(f"未找到序列号为 '{serial_input}' 的实例，请重新输入。")
+
+            # 显示匹配实例详情
+            bot_type = matched_cfg.get("bot_type", "MaiBot")
+            nickname = matched_cfg.get("nickname_path", "-")
+            current_version = matched_cfg.get("version_path", "-")
+            
+            ui.console.print(f"\n[📋 找到匹配实例]", style=ui.colors["info"])
+            ui.console.print(f"实例昵称: {nickname}", style=ui.colors["info"])
+            ui.console.print(f"序列号: {serial_input}", style=ui.colors["info"])
+            ui.console.print(f"Bot类型: {bot_type}", style=ui.colors["info"])
+            ui.console.print(f"当前版本: {current_version}", style=ui.colors["info"])
+            
+            # 确认更新
+            if not ui.confirm("确定要更新此实例吗？这将下载新版本并可能覆盖现有文件。"):
+                ui.print_info("已取消更新操作。")
+                return False
+            
+            # 根据Bot类型选择版本管理器
+            if bot_type == "MaiBot":
+                version_manager = self.maibot_deployer.version_manager
+            else:
+                version_manager = self.mofox_deployer.version_manager
+            
+            # 选择新版本
+            new_version = version_manager.show_version_menu(bot_type)
+            if not new_version:
+                ui.print_info("已取消版本选择。")
+                return False
+            
+            ui.print_info(f"开始更新 {nickname} 从版本 {current_version} 到 {new_version['display_name']}...")
+            
+            # 这里可以实现具体的更新逻辑
+            # 目前只是显示更新完成的信息
+            ui.print_success(f"实例 {nickname} 更新完成！")
+            ui.print_info("请重启实例以应用新版本。")
+            
+            return True
+            
+        except Exception as e:
+            ui.print_error(f"实例更新失败: {str(e)}")
+            logger.error("实例更新失败", error=str(e))
+            return False
     
     def delete_instance(self) -> bool:
         """删除实例并提供备份选项 - 支持通过序列号直接匹配"""

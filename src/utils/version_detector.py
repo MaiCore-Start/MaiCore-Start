@@ -10,6 +10,50 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
+def has_builtin_webui(version: str) -> bool:
+    """
+    检测版本是否内置WebUI（版本>=0.12.2及所有main，dev分支）
+    
+    Args:
+        version: 版本号
+        
+    Returns:
+        是否内置WebUI
+    """
+    if not version:
+        return False
+    
+    version = version.lower().strip()
+    
+    # main和dev分支都内置WebUI
+    if "main" in version or "dev" in version:
+        return True
+    
+    # 检查是否大于等于0.12.2
+    try:
+        # 移除v前缀
+        if version.startswith("v"):
+            version = version[1:]
+        
+        # 提取主版本号（去掉-fix等后缀和括号说明）
+        main_version = version.split('-')[0].split('(')[0].strip()
+        version_parts = main_version.split('.')
+        
+        # 确保至少有三个版本号部分
+        if len(version_parts) >= 3:
+            major = int(version_parts[0])
+            minor = int(version_parts[1])
+            patch = int(version_parts[2])
+            
+            # 检查是否大于等于0.12.2
+            if major > 0 or (major == 0 and minor > 12) or (major == 0 and minor == 12 and patch >= 2):
+                return True
+    except (ValueError, IndexError):
+        logger.warning("版本号格式无法解析，无法判断WebUI内置状态", version=version)
+        return False
+    
+    return False
+
 
 def is_legacy_version(version: str) -> bool:
     """
@@ -51,12 +95,37 @@ def is_legacy_version(version: str) -> bool:
     return False
 
 
-def needs_mongodb(version: str) -> bool:
+def is_legacy_version_with_bot_type(version: str, bot_type: str) -> bool:
+    """
+    根据版本和bot类型检测是否为旧版本
+    
+    Args:
+        version: 版本号
+        bot_type: bot类型 ("MaiBot" 或 "MoFox_bot")
+        
+    Returns:
+        是否为旧版本
+    """
+    if not version:
+        return False
+    
+    version = version.lower().strip()
+    
+    # MoFox的classical版本实际上不是旧版本，使用与master相同的启动方式
+    if version == "classical" and bot_type == "MoFox_bot":
+        return False
+    
+    # 其他情况使用原有的旧版本检测逻辑
+    return is_legacy_version(version)
+
+
+def needs_mongodb(version: str, bot_type: str = "MaiBot") -> bool:
     """
     检测版本是否需要MongoDB（0.7以下版本需要）
     
     Args:
         version: 版本号
+        bot_type: bot类型
         
     Returns:
         是否需要MongoDB
@@ -66,7 +135,11 @@ def needs_mongodb(version: str) -> bool:
     
     version = version.lower().strip()
     
-    # classical版本需要MongoDB
+    # MoFox的classical版本实际上不需要MongoDB（与master分支相同）
+    if version == "classical" and bot_type == "MoFox_bot":
+        return False
+    
+    # classical版本需要MongoDB（默认情况）
     if version == "classical":
         return True
     
@@ -100,30 +173,32 @@ def needs_mongodb(version: str) -> bool:
     return False
 
 
-def needs_adapter(version: str) -> bool:
+def needs_adapter(version: str, bot_type: str = "MaiBot") -> bool:
     """
     检测版本是否需要适配器（0.6.0+版本需要）
     
     Args:
         version: 版本号
+        bot_type: bot类型
         
     Returns:
         是否需要适配器
     """
-    return not is_legacy_version(version)
+    return not is_legacy_version_with_bot_type(version, bot_type)
 
 
-def get_adapter_version(version: str) -> str:
+def get_adapter_version(version: str, bot_type: str = "MaiBot") -> str:
     """
     根据MaiBot版本确定适配器版本
     
     Args:
         version: MaiBot版本号
+        bot_type: bot类型
         
     Returns:
         适配器版本号或分支名
     """
-    if is_legacy_version(version):
+    if is_legacy_version_with_bot_type(version, bot_type):
         return "无需适配器"
     
     version_clean = version.lower().strip()
@@ -202,21 +277,23 @@ def parse_version(version: str) -> Tuple[int, int, int]:
     except (ValueError, IndexError):
         return (0, 0, 0)
 
-def get_version_requirements(version: str) -> Dict[str, Any]:
+def get_version_requirements(version: str, bot_type: str = "MaiBot") -> Dict[str, Any]:
     """
     根据版本获取完整的需求配置
     
     Args:
         version: 版本号
+        bot_type: bot类型
         
     Returns:
         包含所有需求的配置字典
     """
     return {
-        "is_legacy": is_legacy_version(version),
-        "needs_mongodb": needs_mongodb(version),
-        "needs_adapter": needs_adapter(version),
-        "adapter_version": get_adapter_version(version),
+        "is_legacy": is_legacy_version_with_bot_type(version, bot_type),
+        "needs_mongodb": needs_mongodb(version, bot_type),
+        "needs_adapter": needs_adapter(version, bot_type),
+        "adapter_version": get_adapter_version(version, bot_type),
+        "has_builtin_webui": has_builtin_webui(version),
         "parsed_version": parse_version(version),
         "version_display": version
     }
