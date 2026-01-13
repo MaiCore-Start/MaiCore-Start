@@ -306,7 +306,7 @@ class MaiMaiLauncher:
         ui.console.print("麦麦核心启动器控制台", style=ui.colors["primary"])
         ui.console.print("=================")
         
-        ui.console.print("版本：V4.1.2-beta", style=ui.colors["info"])
+        ui.console.print("版本：V4.1.5-beta", style=ui.colors["info"])
         ui.console.print("新增亮点：", style=ui.colors["success"])
         ui.console.print("  • 模块化部署逻辑", style="white")
         ui.console.print("  • 精确的资源监控器", style="white")
@@ -325,6 +325,8 @@ class MaiMaiLauncher:
         ui.console.print("GitHub：https://github.com/MaiCore-Start/MaiCore-Start", style="#46AEF8")
         ui.console.print("你喜欢的话，请给个Star支持一下哦~", style="white")
         ui.console.print("欢迎加入我们的社区！（我们的QQ群聊：1025509724）", style="white")
+        ui.console.print("查看文档中心获取帮助：", style="white")
+        ui.console.print("https://docs.mmcstart.cn:8850/", style="#46AEF8")
 
         ui.console.print("\n感谢以下为此项目做出贡献的开发者：", style=ui.colors["header"])
         ui.console.print("  • 小城之雪（xiaoCZX） - 整个项目的提出者和主要开发者", style="white")
