@@ -15,7 +15,7 @@ from rich.table import Table
 
 from ..ui.interface import ui
 from ..utils.common import check_process, validate_path
-from ..utils.version_detector import is_legacy_version
+from ..utils.version_detector import is_legacy_version, is_legacy_version_with_bot_type, has_builtin_webui
 
 logger = structlog.get_logger(__name__)
 
@@ -422,7 +422,8 @@ class _AdapterComponent(_LaunchComponent):
     def check_enabled(self):
         opts = self.config.get("install_options", {})
         version = self.config.get("version_path", "")
-        self.is_enabled = opts.get("install_adapter", False) and not is_legacy_version(version)
+        bot_type = self.config.get("bot_type", "MaiBot")
+        self.is_enabled = opts.get("install_adapter", False) and not is_legacy_version_with_bot_type(version, bot_type)
 
     def get_launch_details(self) -> Optional[Tuple[str, str, str]]:
         adapter_path = self.config.get("adapter_path", "")
@@ -465,7 +466,19 @@ class _WebUIComponent(_LaunchComponent):
         self.check_enabled()
 
     def check_enabled(self):
-        self.is_enabled = self.config.get("install_options", {}).get("install_webui", False)
+        # 检查是否安装了独立WebUI
+        has_external_webui = self.config.get("install_options", {}).get("install_webui", False)
+        
+        # 检查版本是否内置WebUI
+        version = self.config.get("version_path", "")
+        has_builtin = has_builtin_webui(version)
+        
+        # 对于MaiBot，内置WebUI版本总是启用（通过主程序代理）
+        # 非内置版本需要用户独立安装
+        if self.config.get("bot_type") == "MaiBot" and has_builtin:
+            self.is_enabled = True
+        else:
+            self.is_enabled = has_external_webui
 
     def _resolve_bun_command(self, webui_path: str) -> Optional[str]:
         """Try to find a bun executable either globally or within the project."""
@@ -495,13 +508,32 @@ class _WebUIComponent(_LaunchComponent):
         if not self.is_enabled:
             return True
         
+        version = self.config.get('version_path', 'N/A')
+        bot_type = self.config.get("bot_type", "MaiBot")
+        
+        # 检查是否为内置WebUI版本
+        if bot_type == "MaiBot" and has_builtin_webui(version):
+            ui.print_info("检测到内置WebUI版本，主程序将代理控制面板")
+            ui.print_info("请在浏览器中访问: http://localhost:8001")
+            
+            # 询问是否自动打开浏览器
+            if ui.confirm("是否自动打开浏览器访问控制面板？"):
+                try:
+                    webbrowser.open("http://localhost:8001")
+                    ui.print_success("已打开浏览器访问控制面板")
+                except Exception as exc:
+                    ui.print_warning(f"自动打开浏览器失败，请手动访问 http://localhost:8001 ({exc})")
+            
+            return True
+        
+        # 非内置版本，启动独立WebUI
         ui.print_info("尝试启动 MaiBot 控制面板...")
         webui_path = self.config.get("webui_path", "")
         if not (webui_path and os.path.exists(webui_path)):
             ui.print_error("WebUI路径无效或不存在")
+            ui.print_info("请前往组件下载中心下载并安装WebUI")
             return False
 
-        version = self.config.get('version_path', 'N/A')
         bun_cmd = self._resolve_bun_command(webui_path)
         if bun_cmd:
             bun_exec = f'"{bun_cmd}"'
@@ -543,7 +575,7 @@ class _MaiComponent(_LaunchComponent):
         
         version = self.config.get("version_path", "")
         
-        if is_legacy_version(version):
+        if is_legacy_version_with_bot_type(version, bot_type):
             run_bat = os.path.join(mai_path, "run.bat")
             if not os.path.exists(run_bat):
                 logger.error("旧版本麦麦缺少run.bat", path=run_bat)
@@ -564,7 +596,20 @@ class _MaiComponent(_LaunchComponent):
     
     def start(self, process_manager: _ProcessManager) -> bool:
         ui.print_info(f"尝试启动{self.name}...")
-        return super().start(process_manager)
+        success = super().start(process_manager)
+        
+        # 如果是MoFox_bot且安装了WebUI，启动后自动打开浏览器
+        if success and self.config.get("bot_type") == "MoFox_bot":
+            has_webui = self.config.get("install_options", {}).get("install_mofox_webui", False)
+            if has_webui:
+                ui.print_info("检测到MoFox WebUI已安装，WebUI将随主程序自动启动")
+                ui.print_info("正在打开浏览器访问 http://localhost:12138 ...")
+                try:
+                    webbrowser.open("http://localhost:12138")
+                except Exception as exc:
+                    ui.print_warning(f"自动打开浏览器失败，请手动访问 http://localhost:12138 ({exc})")
+        
+        return success
 
 
 # --- 主启动器类 ---
@@ -627,7 +672,7 @@ class MaiLauncher:
             errors.append(f"麦麦本体路径: {msg}")
 
         version = config.get("version_path", "")
-        if is_legacy_version(version):
+        if is_legacy_version_with_bot_type(version, bot_type):
             valid, msg = validate_path(mai_path, check_file="run.bat")
             if not valid:
                 errors.append(f"旧版麦麦本体路径缺少run.bat: {msg}")
@@ -685,23 +730,45 @@ class MaiLauncher:
 
         # 根据 bot_type 定义菜单
         if bot_type == "MaiBot":
+            # 检查是否为内置WebUI版本
+            version = config.get("version_path", "")
+            has_builtin = has_builtin_webui(version)
+            
             menu_options = {
                 "1": ("主程序+适配器", ["mai", "adapter"]),
                 "2": ("主程序+适配器+NapCatQQ", ["mai", "adapter", "napcat"]),
                 "3": ("主程序+适配器+检查MongoDB", ["mai", "adapter", "mongodb"]),
                 "4": ("主程序+适配器+NapCatQQ+检查MongoDB", ["mai", "adapter", "napcat", "mongodb"]),
             }
+            
             # 如果控制面板可用，添加包含控制面板的启动选项
             if self._components['webui'].is_enabled:
-                menu_options["5"] = ("主程序+适配器+控制面板", ["mai", "adapter", "webui"])
-                menu_options["6"] = ("主程序+适配器+NapCat+控制面板", ["mai", "adapter", "napcat", "webui"])
+                if has_builtin:
+                    # 内置版本显示为"控制面板(内置)"
+                    menu_options["5"] = ("主程序+适配器+控制面板(内置)", ["mai", "adapter", "webui"])
+                    menu_options["6"] = ("主程序+适配器+NapCat+控制面板(内置)", ["mai", "adapter", "napcat", "webui"])
+                else:
+                    # 独立版本显示为"控制面板"
+                    menu_options["5"] = ("主程序+适配器+控制面板", ["mai", "adapter", "webui"])
+                    menu_options["6"] = ("主程序+适配器+NapCat+控制面板", ["mai", "adapter", "napcat", "webui"])
         elif bot_type == "MoFox_bot":
-            menu_options = {
-                "1": ("主程序", ["mai"]),
-                "2": ("主程序+适配器", ["mai", "adapter"]),
-                "3": ("主程序+NapCatQQ", ["mai", "napcat"]),
-                "4": ("主程序+适配器+NapCatQQ", ["mai", "adapter", "napcat"]),
-            }
+            # 检查是否安装了MoFox WebUI
+            has_mofox_webui = config.get("install_options", {}).get("install_mofox_webui", False)
+            
+            if has_mofox_webui:
+                menu_options = {
+                    "1": ("主程序+WebUI", ["mai"]),
+                    "2": ("主程序+适配器+WebUI", ["mai", "adapter"]),
+                    "3": ("主程序+NapCatQQ+WebUI", ["mai", "napcat"]),
+                    "4": ("主程序+适配器+NapCatQQ+WebUI", ["mai", "adapter", "napcat"]),
+                }
+            else:
+                menu_options = {
+                    "1": ("主程序", ["mai"]),
+                    "2": ("主程序+适配器", ["mai", "adapter"]),
+                    "3": ("主程序+NapCatQQ", ["mai", "napcat"]),
+                    "4": ("主程序+适配器+NapCatQQ", ["mai", "adapter", "napcat"]),
+                }
         else:
             # 默认或未知bot类型的菜单
             menu_options = {
@@ -747,8 +814,16 @@ class MaiLauncher:
             "2": ("适配器", "adapter"),
             "3": ("NapCatQQ", "napcat"),
             "4": ("检查MongoDB", "mongodb"),
-            "5": ("控制面板", "webui"),
         }
+        
+        # 对于MaiBot内置WebUI版本，添加控制面板选项
+        if self._config:
+            bot_type = self._config.get("bot_type", "MaiBot")
+            version = self._config.get("version_path", "")
+            if bot_type == "MaiBot" and has_builtin_webui(version):
+                advanced_options["5"] = ("控制面板(内置)", "webui")
+            elif self._components['webui'].is_enabled:
+                advanced_options["5"] = ("控制面板", "webui")
         
         for key, (text, comp_name) in advanced_options.items():
             is_enabled = self._components[comp_name].is_enabled

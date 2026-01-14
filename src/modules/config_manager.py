@@ -82,9 +82,9 @@ class ConfigManager:
 
             # 5. 获取组件安装选项
             install_options = self._get_install_options()
-            adapter_path = self._configure_adapter_auto(version, install_options.get("install_adapter", False), bot_path)
+            adapter_path = self._configure_adapter_auto(version, install_options.get("install_adapter", False), bot_path, bot_type)
             napcat_path = self._configure_napcat_auto(install_options.get("install_napcat", False))
-            mongodb_path = self._configure_mongodb_auto(version, install_options.get("install_mongodb", False))
+            mongodb_path = self._configure_mongodb_auto(version, install_options.get("install_mongodb", False), bot_type)
             webui_path = self._configure_webui_auto(install_options.get("install_webui", False))
 
             # 6. 创建配置
@@ -165,13 +165,13 @@ class ConfigManager:
             install_options = self._get_install_options()
             
             # 根据版本和选项配置适配器（手动模式）
-            adapter_path = self._configure_adapter_manual(version, install_options.get("install_adapter", False), mai_path)
+            adapter_path = self._configure_adapter_manual(version, install_options.get("install_adapter", False), mai_path, "MaiBot")
             
             # 配置NapCat（手动模式）
             napcat_path = self._configure_napcat_manual(install_options.get("install_napcat", False))
 
             # 配置MongoDB（手动模式）
-            mongodb_path = self._configure_mongodb_manual(version, install_options.get("install_mongodb", False))
+            mongodb_path = self._configure_mongodb_manual(version, install_options.get("install_mongodb", False), "MaiBot")
             
             # 配置WebUI（手动模式）
             webui_path = self._configure_webui_manual(install_options.get("install_webui", False))
@@ -312,9 +312,9 @@ class ConfigManager:
                         version = config.get('version_path', '')
                         mai_path = config.get('mai_path', '')
                         
-                        config['adapter_path'] = self._configure_adapter_manual(version, install_options.get("install_adapter", False), mai_path)
+                        config['adapter_path'] = self._configure_adapter_manual(version, install_options.get("install_adapter", False), mai_path, config.get('bot_type', 'MaiBot'))
                         config['napcat_path'] = self._configure_napcat_manual(install_options.get("install_napcat", False))
-                        config['mongodb_path'] = self._configure_mongodb_manual(version, install_options.get("install_mongodb", False))
+                        config['mongodb_path'] = self._configure_mongodb_manual(version, install_options.get("install_mongodb", False), config.get('bot_type', 'MaiBot'))
                         config['webui_path'] = self._configure_webui_manual(install_options.get("install_webui", False))
                     else:
                         # 单独配置各组件
@@ -460,7 +460,7 @@ class ConfigManager:
             "install_webui": install_webui
         }
     
-    def _configure_adapter_auto(self, version: str, install_adapter: bool, mai_path: str) -> str:
+    def _configure_adapter_auto(self, version: str, install_adapter: bool, mai_path: str, bot_type: str = "MaiBot") -> str:
         """
         自动配置适配器
         
@@ -468,6 +468,7 @@ class ConfigManager:
             version: 版本号
             install_adapter: 是否安装适配器
             mai_path: 麦麦路径
+            bot_type: Bot类型
             
         Returns:
             适配器路径
@@ -477,8 +478,8 @@ class ConfigManager:
             return "跳过适配器安装"
         
         # 检查是否为旧版本
-        from ..utils.version_detector import is_legacy_version
-        if is_legacy_version(version):
+        from ..utils.version_detector import is_legacy_version_with_bot_type
+        if is_legacy_version_with_bot_type(version, bot_type):
             ui.print_info("检测到旧版本，无需配置适配器")
             return "当前配置集的对象实例版本较低，无适配器"
         else:
@@ -498,7 +499,7 @@ class ConfigManager:
             
             return adapter_path
     
-    def _configure_adapter_manual(self, version: str, install_adapter: bool, mai_path: str) -> str:
+    def _configure_adapter_manual(self, version: str, install_adapter: bool, mai_path: str, bot_type: str = "MaiBot") -> str:
         """
         手动配置适配器
         
@@ -506,6 +507,7 @@ class ConfigManager:
             version: 版本号
             install_adapter: 是否安装适配器
             mai_path: 麦麦路径
+            bot_type: Bot类型
             
         Returns:
             适配器路径
@@ -515,8 +517,8 @@ class ConfigManager:
             return "跳过适配器安装"
         
         # 检查是否为旧版本
-        from ..utils.version_detector import is_legacy_version
-        if is_legacy_version(version):
+        from ..utils.version_detector import is_legacy_version_with_bot_type
+        if is_legacy_version_with_bot_type(version, bot_type):
             ui.print_info("检测到旧版本，无需配置适配器")
             return "当前配置集的对象实例版本较低，无适配器"
         else:
@@ -574,13 +576,14 @@ class ConfigManager:
         
         return napcat_path or ""
     
-    def _configure_mongodb_auto(self, version: str, install_mongodb: bool) -> str:
+    def _configure_mongodb_auto(self, version: str, install_mongodb: bool, bot_type: str = "MaiBot") -> str:
         """
         自动配置MongoDB
         
         Args:
             version: 版本号
             install_mongodb: 是否安装MongoDB
+            bot_type: Bot类型
             
         Returns:
             MongoDB路径
@@ -591,20 +594,21 @@ class ConfigManager:
         
         # 检查版本建议
         from ..utils.version_detector import needs_mongodb
-        if needs_mongodb(version):
+        if needs_mongodb(version, bot_type):
             ui.print_info("检测到0.7以下版本，建议配置MongoDB")
             mongodb_path = ui.get_input("请输入MongoDB路径（可为空）：")
         else:
-            ui.print_info("0.7及以上版本MaiMbot不需要MongoDB")            
+            ui.print_info("0.7及以上版本MaiMbot不需要MongoDB")
         return mongodb_path or ""
     
-    def _configure_mongodb_manual(self, version: str, install_mongodb: bool) -> str:
+    def _configure_mongodb_manual(self, version: str, install_mongodb: bool, bot_type: str = "MaiBot") -> str:
         """
         手动配置MongoDB
         
         Args:
             version: 版本号
             install_mongodb: 是否安装MongoDB
+            bot_type: Bot类型
             
         Returns:
             MongoDB路径
@@ -615,7 +619,7 @@ class ConfigManager:
         
         # 检查版本建议
         from ..utils.version_detector import needs_mongodb
-        if needs_mongodb(version):
+        if needs_mongodb(version, bot_type):
             ui.print_info("检测到0.7以下版本，建议配置MongoDB")
             mongodb_path = ui.get_input("请输入MongoDB路径（可为空）：")
         else:
@@ -715,11 +719,49 @@ class ConfigManager:
             mofox_model_config = os.path.join(bot_path, "config", "model_config.toml")
             if os.path.exists(mofox_model_config) and mofox_model_config not in files_to_open:
                 files_to_open.append(mofox_model_config)
+            
+            # MoFox_bot 内置适配器的配置文件
+            # 尝试查找 napcat_adapter_plugin 的 config.toml
+            import os
+            plugins_folder = os.path.join(bot_path, "config", "plugins")
+            if os.path.exists(plugins_folder):
+                # 查找 napcat_adapter_plugin 目录
+                napcat_plugin_path = os.path.join(plugins_folder, "napcat_adapter_plugin")
+                if os.path.exists(napcat_plugin_path):
+                    adapter_config = os.path.join(napcat_plugin_path, "config.toml")
+                    if os.path.exists(adapter_config):
+                        files_to_open.append(adapter_config)
 
         if files_to_open:
             open_files_in_editor(files_to_open)
         else:
             ui.print_warning("未找到任何可供打开的配置文件。")
+    
+    def open_instance_folder(self, config: Dict[str, Any]):
+        """打开选中配置的实例所在目录"""
+        import subprocess
+        import os
+
+        bot_type = config.get("bot_type", "MaiBot")
+        bot_path_key = "mai_path" if bot_type == "MaiBot" else "mofox_path"
+        bot_path = config.get(bot_path_key)
+
+        if not bot_path or not os.path.exists(bot_path):
+            ui.print_error("当前配置的Bot路径无效或不存在。")
+            return
+
+        try:
+            # 获取实例文件夹路径（bot_path的父目录）
+            instance_folder = os.path.dirname(bot_path)
+            if os.path.exists(instance_folder):
+                # 使用Windows的explorer命令打开文件夹
+                # 注意：explorer命令在某些情况下会返回非零状态码，但文件夹确实被打开了
+                result = subprocess.run(["explorer", instance_folder], capture_output=True)
+                ui.print_success(f"已在Windows资源管理器中打开文件夹: {instance_folder}")
+            else:
+                ui.print_error(f"实例文件夹不存在: {instance_folder}")
+        except Exception as e:
+            ui.print_error(f"打开文件夹时发生错误: {str(e)}")
         
 # 全局配置管理器实例
 config_mgr = ConfigManager()

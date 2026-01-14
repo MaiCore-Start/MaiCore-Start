@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ..core.config import config_manager
 from ..utils.port_manager import port_manager
+from ..utils.version_detector import has_builtin_webui
 from ..ui.interface import ui
 from .launcher import launcher
 
@@ -380,7 +381,19 @@ class InstanceMultiLauncher:
                     ports = inst.get("ports", {})
                     main_port = ports.get("main_port", "N/A")
                     webui_port = ports.get("secondary_port", "N/A")
-                    ui.console.print(f"    - {inst['name']}: 主程序({main_port}) + WebUI({webui_port})", style="white")
+                    
+                    # 检查是否为内置WebUI版本
+                    try:
+                        base_config = self._get_base_config_for_instance(inst)
+                        version = base_config.get("version_path", "")
+                        has_builtin = has_builtin_webui(version)
+                        
+                        if has_builtin:
+                            ui.console.print(f"    - {inst['name']}: 主程序({main_port}) + 控制面板(内置,代理端口8001)", style="white")
+                        else:
+                            ui.console.print(f"    - {inst['name']}: 主程序({main_port}) + WebUI({webui_port})", style="white")
+                    except:
+                        ui.console.print(f"    - {inst['name']}: 主程序({main_port}) + WebUI({webui_port})", style="white")
             
             if mofox_instances:
                 ui.console.print("  MoFox_bot实例:", style=ui.colors["success"])
@@ -389,6 +402,12 @@ class InstanceMultiLauncher:
                     main_port = ports.get("main_port", "N/A")
                     napcat_port = ports.get("secondary_port", "N/A")
                     ui.console.print(f"    - {inst['name']}: 主程序({main_port}) + NapCat({napcat_port})", style="white")
+            
+            # 添加WebUI绑定提示
+            ui.console.print("\n[WebUI绑定说明]", style=ui.colors["info"])
+            ui.console.print("  • 内置WebUI版本：所有实例共享代理端口8001", style="white")
+            ui.console.print("  • 独立WebUI版本：每个实例使用独立端口，可能存在冲突", style="white")
+            ui.console.print("  • 建议：多开时优先使用内置WebUI版本以避免端口冲突", style="white")
             
             ui.console.print("")  # 空行分隔
             
@@ -449,7 +468,20 @@ class InstanceMultiLauncher:
             # 显示选中的配置信息
             bot_type = base_config.get("bot_type", "MaiBot")
             nickname = base_config.get("nickname_path", "未知")
+            version = base_config.get("version_path", "未知")
+            
             ui.console.print(f"已选择配置: {selected_config_name} - {nickname} ({bot_type})", style=ui.colors["info"])
+            ui.console.print(f"版本信息: {version}", style=ui.colors["info"])
+            
+            # 对于MaiBot，显示WebUI版本信息
+            if bot_type == "MaiBot":
+                has_builtin = has_builtin_webui(version)
+                if has_builtin:
+                    ui.console.print("✅ 检测到内置WebUI版本 - 支持多开实例WebUI绑定", style=ui.colors["success"])
+                    ui.console.print("   所有实例将共享代理端口8001，避免端口冲突", style="white")
+                else:
+                    ui.console.print("⚠️ 检测到独立WebUI版本 - 可能存在端口冲突", style=ui.colors["warning"])
+                    ui.console.print("   建议：多开时考虑升级到内置WebUI版本", style="white")
             
             # 输入实例名称
             instance_name = ui.get_input("请输入多开实例名称 (回车自动生成): ").strip()

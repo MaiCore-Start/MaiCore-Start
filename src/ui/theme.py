@@ -53,5 +53,6 @@ SYMBOLS = {
     "plugin": "🧩",
     "attention": "🚨",
     "download": "📥",
+    "folder": "📁",
     "refresh": ""
 }

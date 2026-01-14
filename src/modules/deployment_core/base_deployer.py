@@ -74,7 +74,7 @@ class BaseDeployer:
     
     def install_dependencies_in_venv(self, venv_path: str, requirements_path: str) -> bool:
         """
-        在虚拟环境中安装依赖
+        在虚拟环境中安装依赖，优先使用uv
         
         Args:
             venv_path: 虚拟环境路径
@@ -96,6 +96,48 @@ class BaseDeployer:
                 subprocess.run(["uv", "--version"], capture_output=True, check=True)
                 return True
             except (subprocess.CalledProcessError, FileNotFoundError):
+                return False
+        
+        def install_uv() -> bool:
+            """尝试安装uv包管理器"""
+            try:
+                ui.print_info("正在尝试安装uv包管理器...")
+                
+                # 获取系统Python路径
+                if platform.system() == "Windows":
+                    python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                else:
+                    python_exe = os.path.join(venv_path, "bin", "python")
+                
+                # 使用pip安装uv
+                install_cmd = [python_exe, "-m", "pip", "install", "uv"]
+                
+                process = subprocess.Popen(
+                    install_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                if process.stdout:
+                    for line in process.stdout:
+                        line = line.strip()
+                        if line:
+                            print(f"  {line}")
+                
+                process.wait()
+                
+                if process.returncode == 0:
+                    ui.print_success("uv安装成功！")
+                    return True
+                else:
+                    ui.print_warning("uv安装失败")
+                    return False
+                    
+            except Exception as e:
+                ui.print_warning(f"安装uv时发生错误: {str(e)}")
                 return False
         
         def run_command_with_output(cmd: List[str], description: str) -> bool:
@@ -157,8 +199,15 @@ class BaseDeployer:
             # 检查是否可用uv
             use_uv = is_uv_available()
             
+            if not use_uv:
+                ui.print_info("未检测到uv包管理器，尝试自动安装...")
+                if install_uv():
+                    use_uv = True
+                else:
+                    ui.print_warning("uv安装失败，将使用pip安装")
+            
             if use_uv:
-                ui.print_info("检测到uv包管理器，将使用uv加速安装")
+                ui.print_info("使用uv包管理器加速安装依赖")
                 success = False
                 
                 # 尝试使用不同镜像源
@@ -310,10 +359,10 @@ class BaseDeployer:
                 with open(filename, 'wb') as f:
                     if total_size > 0:
                         # 使用Rich的进度条显示下载进度
-                        from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn
-                        from rich.console import Console
+                        from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn, SpinnerColumn
                         
                         with Progress(
+                            SpinnerColumn(),
                             TextColumn("[bold blue]{task.description}"),
                             BarColumn(),
                             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
@@ -324,24 +373,33 @@ class BaseDeployer:
                             TextColumn("•"),
                             TransferSpeedColumn(),
                             console=ui.console,
-                            transient=False
+                            transient=True,
+                            refresh_per_second=10
                         ) as progress:
                             task = progress.add_task(f"下载 {file_basename}", total=total_size)
                             
+                            downloaded = 0
                             for chunk in response.iter_content(chunk_size=8192):
                                 if chunk:
                                     f.write(chunk)
+                                    downloaded += len(chunk)
                                     progress.update(task, advance=len(chunk))
+                            
+                            # 确保进度条显示100%
+                            progress.update(task, completed=total_size)
                     else:
                         # 如果没有文件大小信息，使用简单的进度显示
                         downloaded = 0
+                        last_reported = 0
                         for chunk in response.iter_content(chunk_size=8192):
                             if chunk:
                                 f.write(chunk)
                                 downloaded += len(chunk)
                                 # 每下载1MB显示一次进度
-                                if downloaded % (1024 * 1024) == 0:
-                                    ui.print_info(f"已下载: {downloaded / (1024 * 1024):.1f} MB")
+                                if downloaded - last_reported >= (1024 * 1024):
+                                    size_mb = downloaded / (1024 * 1024)
+                                    ui.print_info(f"已下载: {size_mb:.1f} MB")
+                                    last_reported = downloaded
                 
                 ui.print_success(f"下载完成: {file_basename}")
                 logger.info("文件下载成功", url=url, filename=filename)

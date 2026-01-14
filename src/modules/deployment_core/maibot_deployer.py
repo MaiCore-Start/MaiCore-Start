@@ -152,7 +152,7 @@ class MaiBotDeployer(BaseDeployer):
                     return path
             
             # 使用版本检测模块
-            version_reqs = get_version_requirements(version)
+            version_reqs = get_version_requirements(version, "MaiBot")
             
             ui.print_info(f"版本分析结果：")
             ui.print_info(f"  版本号：{version}")

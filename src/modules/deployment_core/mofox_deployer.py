@@ -1,59 +1,61 @@
 # -*- coding: utf-8 -*-
 """
-MoFox_bot部署器
-负责MoFox_bot的部署逻辑
+MoFox-Core部署器
+负责MoFox-Core的部署逻辑
 """
 import os
 import re
 import shutil
 import tempfile
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import structlog
 
 from .base_deployer import BaseDeployer
 from .version_manager import VersionManager
+from .mofox_webui_deployer import MoFoxWebUIDeployer
 from ...ui.interface import ui
 
 logger = structlog.get_logger(__name__)
 
 
 class MoFoxBotDeployer(BaseDeployer):
-    """MoFox_bot部署器"""
+    """MoFox-Core部署器"""
     
     def __init__(self):
         super().__init__()
-        self.repo = "MoFox-Studio/MoFox_Bot"
+        self.repo = "MoFox-Studio/MoFox-Core"
         self.version_manager = VersionManager(self.repo)
+        self.webui_deployer = MoFoxWebUIDeployer()
     
     def install_bot(self, deploy_config: Dict) -> Optional[str]:
         """
-        安装MoFox_bot主体
+        安装MoFox-Core主体
         
         Args:
             deploy_config: 部署配置
             
         Returns:
-            MoFox_bot安装路径，失败返回None
+            MoFox-Core安装路径，失败返回None
         """
-        ui.console.print("\n[📦 第一步：安装MoFox_bot]", style=ui.colors["primary"])
+        ui.console.print("\n[📦 第一步：安装MoFox-Core]", style=ui.colors["primary"])
         
         selected_version = deploy_config["selected_version"]
         install_dir = deploy_config["install_dir"]
         
         with tempfile.TemporaryDirectory() as temp_dir:
             # 下载源码
-            ui.print_info("正在下载MoFox_bot源码...")
+            ui.print_info("正在下载MoFox-Core源码...")
             download_url = selected_version["download_url"]
             archive_path = os.path.join(temp_dir, f"{selected_version['name']}.zip")
             
             if not self.download_file(download_url, archive_path):
-                ui.print_error("MoFox_bot下载失败")
+                ui.print_error("MoFox-Core下载失败")
                 return None
             
             # 解压到临时目录
-            ui.print_info("正在解压MoFox_bot...")
+            ui.print_info("正在解压MoFox-Core...")
             if not self.extract_archive(archive_path, temp_dir):
-                ui.print_error("MoFox_bot解压失败")
+                ui.print_error("MoFox-Core解压失败")
                 return None
             
             # 查找解压后的目录
@@ -67,9 +69,9 @@ class MoFoxBotDeployer(BaseDeployer):
             
             # 创建目标目录并复制文件
             # 使用实例名称作为父目录，与MaiBot保持一致
-            nickname = deploy_config.get("nickname", "MoFox_bot_instance")
+            nickname = deploy_config.get("nickname", "MoFox-Core_instance")
             instance_dir = os.path.join(install_dir, nickname)
-            target_dir = os.path.join(instance_dir, "MoFox_bot")
+            target_dir = os.path.join(instance_dir, "MoFox-Core")
             
             # 创建实例目录
             os.makedirs(instance_dir, exist_ok=True)
@@ -83,22 +85,22 @@ class MoFoxBotDeployer(BaseDeployer):
                     ui.print_error(f"删除旧目录失败: {str(e)}")
                     return None
             
-            ui.print_info("正在安装MoFox_bot文件...")
+            ui.print_info("正在安装MoFox-Core文件...")
             shutil.copytree(source_dir, target_dir)
             
-            ui.print_success("✅ MoFox_bot安装完成")
-            logger.info("MoFox_bot安装成功", path=target_dir)
+            ui.print_success("✅ MoFox-Core安装完成")
+            logger.info("MoFox-Core安装成功", path=target_dir)
             return target_dir
     
     def setup_config_files(self, deploy_config: Dict, bot_path: str, 
                           adapter_path: str = "", napcat_path: str = "",
                           mongodb_path: str = "", webui_path: str = "") -> bool:
         """
-        设置MoFox_bot配置文件
+        设置MoFox-Core配置文件
         
         Args:
             deploy_config: 部署配置
-            bot_path: MoFox_bot路径
+            bot_path: MoFox-Core路径
             adapter_path: 适配器路径
             napcat_path: NapCat路径
             mongodb_path: MongoDB路径
@@ -117,10 +119,10 @@ class MoFoxBotDeployer(BaseDeployer):
             template_dir = os.path.join(bot_path, "template")
             
             # 1. 处理Bot主程序配置文件
-            ui.print_info("正在设置MoFox_bot配置文件...")
+            ui.print_info("正在设置MoFox-Core配置文件...")
             
             os.makedirs(config_dir, exist_ok=True)
-            ui.print_info(f"为 MoFox_bot v{version_name} 创建标准配置文件...")
+            ui.print_info(f"为 MoFox-Core v{version_name} 创建标准配置文件...")
             
             # 复制 bot_config_template.toml (通用)
             bot_config_template = os.path.join(template_dir, "bot_config_template.toml")
@@ -131,7 +133,7 @@ class MoFoxBotDeployer(BaseDeployer):
             else:
                 ui.print_warning(f"⚠️ 未找到模板: {bot_config_template}")
 
-            # MoFox_bot需要model_config.toml
+            # MoFox-Core需要model_config.toml
             model_config_template = os.path.join(template_dir, "model_config_template.toml")
             model_config_target = os.path.join(config_dir, "model_config.toml")
             if os.path.exists(model_config_template):
@@ -180,7 +182,7 @@ class MoFoxBotDeployer(BaseDeployer):
                             except Exception as e:
                                 ui.print_warning(f"⚠️ 适配器配置文件复制失败: {file} - {str(e)}")
             else:
-                ui.print_info("使用MoFox_bot内置适配器，无需额外配置")
+                ui.print_info("使用MoFox-Core内置适配器，无需额外配置")
 
             # 3. 配置提示
             if napcat_path:
@@ -192,7 +194,7 @@ class MoFoxBotDeployer(BaseDeployer):
                 ui.console.print(f"  • MongoDB路径: {mongodb_path}")
             
             if webui_path:
-                ui.print_info("MoFox_bot后台管理WebUI配置完成:")
+                ui.print_info("MoFox-Core后台管理WebUI配置完成:")
                 ui.console.print(f"  • WebUI路径: {webui_path}")
             
             ui.print_success("✅ 配置文件设置完成")
@@ -202,3 +204,37 @@ class MoFoxBotDeployer(BaseDeployer):
             ui.print_error(f"配置文件设置失败: {str(e)}")
             logger.error("配置文件设置失败", error=str(e))
             return False
+    
+    def install_webui(self, deploy_config: Dict, bot_path: str) -> Tuple[bool, str]:
+        """
+        安装MoFox WebUI
+        
+        Args:
+            deploy_config: 部署配置
+            bot_path: MoFox-Core路径
+            
+        Returns:
+            (是否成功, WebUI路径)
+        """
+        ui.console.print("\n[🌐 MoFox WebUI安装]", style=ui.colors["primary"])
+        
+        try:
+            # 检查是否需要安装WebUI
+            if not deploy_config.get("install_mofox_webui", False):
+                ui.print_info("用户选择不安装MoFox WebUI")
+                return True, ""
+            
+            # 使用WebUI部署器安装
+            success, webui_path = self.webui_deployer.install_webui(deploy_config, bot_path)
+            
+            if success:
+                ui.print_success("✅ MoFox WebUI安装完成")
+                return True, webui_path
+            else:
+                ui.print_error("❌ MoFox WebUI安装失败")
+                return False, ""
+                
+        except Exception as e:
+            ui.print_error(f"MoFox WebUI安装失败: {str(e)}")
+            logger.error("MoFox WebUI安装失败", error=str(e))
+            return False, ""

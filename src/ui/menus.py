@@ -133,6 +133,7 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         self.console.print(f" [E] {self.symbols['new']} 新建配置集", style=self.colors["success"])
         self.console.print(f" [F] {self.symbols['delete']} 删除配置集", style=self.colors["error"])
         self.console.print(f" [G] {self.symbols['edit']} 打开实例配置文件", style=self.colors["info"])
+        self.console.print(f" [H] {self.symbols['folder']} 打开实例所在目录", style=self.colors["info"])
         
         self.console.print("====>>返回<<====")
         self.console.print(f" [Q] {self.symbols['back']} 返回上级", style=self.colors["exit"])
