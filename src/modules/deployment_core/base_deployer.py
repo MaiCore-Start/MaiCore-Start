@@ -12,12 +12,13 @@ import time
 import venv
 import zipfile
 from pathlib import Path
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
 import requests
 import structlog
 from tqdm import tqdm
 
 from ...ui.interface import ui
+from ...core.p_config import p_config_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -443,3 +444,250 @@ class BaseDeployer:
             ui.print_error(f"解压失败: {str(e)}")
             logger.error("文件解压失败", error=str(e), archive=archive_path)
             return False
+    
+    def get_git_executable_path(self) -> Optional[str]:
+        """
+        获取Git可执行文件路径
+        
+        Returns:
+            Git可执行文件路径，如果未找到则返回None
+        """
+        # 优先检查系统PATH中的Git，避免内置Git的问题
+        try:
+            result = subprocess.run(["git", "--version"], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and "git version" in result.stdout.lower():
+                ui.print_info("使用系统Git")
+                return "git"
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            pass
+        
+        # 如果系统Git不可用，尝试内置Git（但要小心处理）
+        git_path = os.path.join(os.getcwd(), "bin", "git.exe")
+        if os.path.exists(git_path):
+            try:
+                # 验证内置Git是否正常工作
+                result = subprocess.run([git_path, "--version"], 
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0 and "git version" in result.stdout.lower():
+                    ui.print_info(f"使用内置Git: {git_path}")
+                    return git_path
+                else:
+                    ui.print_warning("内置Git验证失败")
+            except Exception as e:
+                ui.print_warning(f"内置Git测试失败: {str(e)}")
+        
+        ui.print_warning("未找到可用的Git可执行文件")
+        return None
+    
+    def test_mirror_speed(self, mirror_url: str, timeout: int = 10) -> Tuple[bool, float]:
+        """
+        测试镜像站速度
+        
+        Args:
+            mirror_url: 镜像站URL
+            timeout: 超时时间（秒）
+            
+        Returns:
+            (是否成功, 响应时间)
+        """
+        try:
+            start_time = time.time()
+            test_url = f"{mirror_url.rstrip('/')}/MaiM-with-u/MaiBot"
+            
+            response = requests.get(test_url, timeout=timeout)
+            response.raise_for_status()
+            
+            response_time = time.time() - start_time
+            logger.info("镜像站测速成功", mirror=mirror_url, time=response_time)
+            return True, response_time
+            
+        except Exception as e:
+            logger.warning("镜像站测速失败", mirror=mirror_url, error=str(e))
+            return False, float('inf')
+    
+    def get_best_mirror(self) -> str:
+        """
+        获取最快的Git镜像站
+        
+        Returns:
+            最佳镜像站URL
+        """
+        git_config = p_config_manager.get("git", {})
+        mirrors = git_config.get("mirrors", ["https://github.com"])
+        auto_select = git_config.get("auto_select_mirror", True)
+        selected_mirror = git_config.get("selected_mirror", "")
+        
+        # 如果用户已指定镜像站且不是自动选择
+        if selected_mirror and not auto_select:
+            return selected_mirror
+        
+        # 如果只有一个镜像站，直接返回
+        if len(mirrors) == 1:
+            return mirrors[0]
+        
+        ui.print_info("正在测试Git镜像站速度...")
+        
+        # 测试所有镜像站
+        mirror_speeds = []
+        for mirror in mirrors:
+            ui.print_info(f"测试镜像站: {mirror}")
+            success, response_time = self.test_mirror_speed(mirror)
+            if success:
+                mirror_speeds.append((mirror, response_time))
+                ui.print_success(f"SUCCESS {mirror}: {response_time:.2f}秒")
+            else:
+                ui.print_warning(f"FAILED {mirror}: 连接失败")
+        
+        if not mirror_speeds:
+            ui.print_warning("所有镜像站均无法连接，使用默认GitHub")
+            return "https://github.com"
+        
+        # 按速度排序，选择最快的
+        mirror_speeds.sort(key=lambda x: x[1])
+        best_mirror = mirror_speeds[0][0]
+        
+        ui.print_success(f"选择最快镜像站: {best_mirror} ({mirror_speeds[0][1]:.2f}秒)")
+        return best_mirror
+    
+    def clone_repository(self, repo_url: str, target_dir: str, branch: str = "main", depth: int = 1) -> bool:
+        """
+        使用git clone克隆仓库
+        
+        Args:
+            repo_url: 仓库URL
+            target_dir: 目标目录
+            branch: 分支名称
+            depth: 克隆深度（浅层克隆）
+            
+        Returns:
+            是否克隆成功
+        """
+        git_exe = self.get_git_executable_path()
+        if not git_exe:
+            ui.print_error("未找到Git可执行文件")
+            return False
+        
+        try:
+            # 确保目标目录不存在或为空
+            if os.path.exists(target_dir):
+                if os.listdir(target_dir):
+                    ui.print_warning(f"目标目录已存在且不为空: {target_dir}")
+                    return False
+            else:
+                os.makedirs(target_dir, exist_ok=True)
+            
+            # 构建git clone命令
+            cmd = [
+                git_exe, "clone",
+                "--depth", str(depth),
+                "--branch", branch,
+                "--quiet",  # 减少输出
+                repo_url,
+                target_dir
+            ]
+            
+            ui.print_info(f"正在克隆仓库: {repo_url}")
+            ui.print_info(f"分支: {branch}, 深度: {depth}")
+            
+            # 设置超时时间（5分钟）
+            timeout = 300
+            
+            # 执行克隆命令
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+            
+            try:
+                # 等待进程完成，设置超时
+                stdout, stderr = process.communicate(timeout=timeout)
+                
+                if process.returncode == 0:
+                    ui.print_success("仓库克隆成功")
+                    logger.info("Git clone成功", repo=repo_url, target=target_dir, branch=branch)
+                    return True
+                else:
+                    error_msg = stderr.strip() if stderr else "未知错误"
+                    ui.print_error(f"克隆失败: {error_msg}")
+                    logger.error("Git clone失败", repo=repo_url, error=error_msg, returncode=process.returncode)
+                    return False
+                    
+            except subprocess.TimeoutExpired:
+                ui.print_error(f"克隆超时（{timeout}秒）")
+                process.kill()
+                process.wait()
+                logger.error("Git clone超时", repo=repo_url, timeout=timeout)
+                return False
+                
+        except Exception as e:
+            ui.print_error(f"克隆过程中发生错误: {str(e)}")
+            logger.error("Git clone异常", repo=repo_url, error=str(e))
+            return False
+    
+    def get_git_clone_url(self, repo: str, mirror: Optional[str] = None) -> str:
+        """
+        获取Git clone URL
+        
+        Args:
+            repo: 仓库名称，格式为 "owner/repo"
+            mirror: 镜像站URL，如果为None则自动选择
+            
+        Returns:
+            完整的Git clone URL
+        """
+        if not mirror:
+            mirror = self.get_best_mirror()
+        
+        # 处理不同的镜像站格式
+        if mirror == "https://github.com":
+            return f"https://github.com/{repo}.git"
+        elif "ghproxy.com" in mirror:
+            return f"{mirror.rstrip('/')}/https://github.com/{repo}.git"
+        else:
+            # 其他镜像站可能需要特殊处理
+            return f"{mirror.rstrip('/')}/{repo}.git"
+    
+    def download_with_git_fallback(self, repo: str, target_dir: str, branch: str = "main", 
+                                 fallback_url: Optional[str] = None) -> bool:
+        """
+        优先使用Git clone，失败时回退到下载压缩包
+        
+        Args:
+            repo: 仓库名称
+            target_dir: 目标目录
+            branch: 分支名称
+            fallback_url: 回退下载URL
+            
+        Returns:
+            是否成功
+        """
+        # 首先尝试Git clone
+        git_config = p_config_manager.get("git", {})
+        depth = git_config.get("depth", 1)
+        
+        clone_url = self.get_git_clone_url(repo)
+        ui.print_info("优先使用Git clone方式部署...")
+        
+        if self.clone_repository(clone_url, target_dir, branch, depth):
+            return True
+        
+        # Git clone失败，回退到下载压缩包
+        if fallback_url:
+            ui.print_warning("Git clone失败，回退到下载压缩包方式...")
+            archive_path = os.path.join(tempfile.gettempdir(), f"{repo.replace('/', '_')}.zip")
+            
+            if self.download_file(fallback_url, archive_path):
+                if self.extract_archive(archive_path, target_dir):
+                    # 清理临时文件
+                    try:
+                        os.remove(archive_path)
+                    except:
+                        pass
+                    return True
+        
+        return False

@@ -65,6 +65,17 @@ class PConfig:
             "data_refresh_interval": 2.0,
             "ui_refresh_interval": 0.3,
             "input_poll_interval": 0.05
+        },
+        "git": {
+            "mirrors": [
+                "https://github.com",
+                "https://ghproxy.com/https://github.com",
+                "https://bgithub.xyz",
+            ],
+            "auto_select_mirror": True,
+            "selected_mirror": "",
+            "timeout": 30,
+            "depth": 1
         }
     }
 

@@ -9,6 +9,7 @@ from .version_manager import VersionManager
 from .maibot_deployer import MaiBotDeployer
 from .mofox_deployer import MoFoxBotDeployer
 from .napcat_deployer import NapCatDeployer
+from .instance_updater import InstanceUpdater
 
 __all__ = [
     'BaseDeployer',
@@ -16,4 +17,5 @@ __all__ = [
     'MaiBotDeployer',
     'MoFoxBotDeployer',
     'NapCatDeployer',
+    'InstanceUpdater',
 ]
