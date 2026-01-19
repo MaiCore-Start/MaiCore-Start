@@ -58,7 +58,7 @@ class Config:
             if "current_config" not in self.config:
                 logger.warning("配置缺少 'current_config'，使用默认值 'default'")
                 self.config["current_config"] = "default"
-                
+            
             # 验证并修复序列号
             if self._validate_and_repair_serials():
                 self.save()

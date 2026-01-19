@@ -175,7 +175,8 @@ class UI:
         self.console.print(f"{self.symbols['error']} {message}", style=self.colors["error"])
     
     def print_warning(self, message: str):
-        logger.warning(f"输出警告信息: {message}")
+        # 仅在日志中记录完整警告信息，控制台输出保持简洁
+        logger.warning(f"警告: {message}")
         self.console.print(f"{self.symbols['warning']} {message}", style=self.colors["warning"])
     
     def print_info(self, message: str):

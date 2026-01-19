@@ -16,6 +16,7 @@ class PConfig:
     
     # 定义默认配置，特别是UI主题
     DEFAULT_CONFIG = {
+        "first_run": True,  # 新增首次运行标志
         "theme": {
             "primary": "#BADFFA",
             "success": "#4AF933",
@@ -96,7 +97,10 @@ class PConfig:
                 self.config = toml.load(f)
                 logger.info("成功加载程序配置文件")
             
-            # 可以在这里添加配置项验证逻辑，确保所有必需的键都存在
+            # 确保配置结构完整（合并默认值）
+            if self._ensure_config_integrity():
+                logger.info("配置结构已更新，正在保存...")
+                self.save()
             
             return self.config
             
@@ -156,6 +160,42 @@ class PConfig:
         logger.info("正在将程序配置重置为默认值")
         self.config = self.DEFAULT_CONFIG.copy()
         return self.save()
+
+    def _ensure_config_integrity(self) -> bool:
+        """
+        确保配置包含所有默认项
+        如果是首次添加 first_run 但文件已存在，则默认为 False (避免旧用户看到新手引导)
+        返回是否进行了修改
+        """
+        modified = False
+        
+        # 1. 特殊处理 first_run
+        # 如果 first_run 不存在，但配置已加载（意味着是旧配置文件），则设为 False
+        if "first_run" not in self.config:
+            self.config["first_run"] = False
+            modified = True
+            logger.info("检测到旧配置文件，已将 first_run 初始化为 False")
+
+        # 2. 递归合并默认配置
+        if self._recursive_update(self.config, self.DEFAULT_CONFIG):
+            modified = True
+            
+        return modified
+
+    def _recursive_update(self, target: Dict, source: Dict) -> bool:
+        """递归更新字典，返回是否有变更"""
+        changed = False
+        for k, v in source.items():
+            if k == "first_run":
+                continue # 已在外部处理
+                
+            if k not in target:
+                target[k] = v
+                changed = True
+            elif isinstance(v, dict) and isinstance(target[k], dict):
+                if self._recursive_update(target[k], v):
+                    changed = True
+        return changed
 
 # 全局程序配置实例
 p_config_manager = PConfig()

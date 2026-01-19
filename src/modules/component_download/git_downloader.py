@@ -260,19 +260,59 @@ class GitDownloader(BaseDownloader):
     def check_installation(self) -> tuple[bool, str]:
         """检查Git是否已安装"""
         try:
+            # 1. 尝试命令行检测 (优先)
             import subprocess
-            result = subprocess.run(
-                ["git", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
-            if result.returncode == 0:
-                version = result.stdout.strip()
-                return True, f"Git 已安装，版本: {version}"
-            else:
-                return False, "Git 未安装"
+            try:
+                result = subprocess.run(
+                    "git --version",
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    startupinfo=startupinfo
+                )
+                
+                if result.returncode == 0:
+                    version = result.stdout.strip()
+                    # 简化输出，只保留版本号部分
+                    if version.startswith("git version"):
+                        version = version.replace("git version", "").strip()
+                    return True, f"Git 已安装 (命令行), 版本: {version}"
+            except Exception:
+                pass
+
+            if self.system == 'windows':
+                # 2. Windows 注册表检测
+                import winreg
+                registry_paths = [
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1"),
+                    (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1")
+                ]
+                
+                for hkey, path in registry_paths:
+                    try:
+                        with winreg.OpenKey(hkey, path) as key:
+                            version, _ = winreg.QueryValueEx(key, "DisplayVersion")
+                            return True, f"Git 已安装 (注册表), 版本: {version}"
+                    except:
+                        continue
+                
+                # 3. Windows 常见路径检测
+                common_paths = [
+                    r"C:\Program Files\Git\cmd\git.exe",
+                    r"C:\Program Files (x86)\Git\cmd\git.exe",
+                    os.path.join(os.environ.get('LOCALAPPDATA', ''), r'Programs\Git\cmd\git.exe')
+                ]
+                
+                for path in common_paths:
+                    if os.path.exists(path):
+                        return True, "Git 已安装 (路径检测)"
+
+            return False, "Git 未安装"
                 
         except Exception as e:
             return False, f"检查Git安装状态时发生错误: {str(e)}"

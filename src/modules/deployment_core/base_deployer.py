@@ -452,30 +452,64 @@ class BaseDeployer:
         Returns:
             Git可执行文件路径，如果未找到则返回None
         """
-        # 优先检查系统PATH中的Git，避免内置Git的问题
+        # 1. 优先检查系统PATH中的Git
         try:
-            result = subprocess.run(["git", "--version"], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0 and "git version" in result.stdout.lower():
+            # 使用 shell=True 兼容 Windows cmd/bat 别名
+            startupinfo = None
+            if platform.system() == "Windows":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+            result = subprocess.run(
+                "git --version", 
+                shell=True,
+                capture_output=True, 
+                text=True, 
+                timeout=10,
+                startupinfo=startupinfo
+            )
+            
+            if result.returncode == 0:
                 ui.print_info("使用系统Git")
                 return "git"
         except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
             pass
         
-        # 如果系统Git不可用，尝试内置Git（但要小心处理）
-        git_path = os.path.join(os.getcwd(), "bin", "git.exe")
-        if os.path.exists(git_path):
+        # 2. 如果系统是Windows，尝试通过注册表或常见路径查找
+        if platform.system() == "Windows":
+            # 2.1 注册表查找
             try:
-                # 验证内置Git是否正常工作
-                result = subprocess.run([git_path, "--version"], 
-                                      capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and "git version" in result.stdout.lower():
-                    ui.print_info(f"使用内置Git: {git_path}")
-                    return git_path
-                else:
-                    ui.print_warning("内置Git验证失败")
-            except Exception as e:
-                ui.print_warning(f"内置Git测试失败: {str(e)}")
+                import winreg
+                registry_paths = [
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1"),
+                    (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Git_is1")
+                ]
+                
+                for hkey, path in registry_paths:
+                    try:
+                        with winreg.OpenKey(hkey, path) as key:
+                            install_location, _ = winreg.QueryValueEx(key, "InstallLocation")
+                            git_exe = os.path.join(install_location, "cmd", "git.exe")
+                            if os.path.exists(git_exe):
+                                ui.print_info(f"通过注册表发现Git: {git_exe}")
+                                return git_exe
+                    except:
+                        continue
+            except:
+                pass
+
+            # 2.2 常见路径查找
+            common_paths = [
+                r"C:\Program Files\Git\cmd\git.exe",
+                r"C:\Program Files (x86)\Git\cmd\git.exe",
+                os.path.join(os.environ.get('LOCALAPPDATA', ''), r'Programs\Git\cmd\git.exe')
+            ]
+            
+            for path in common_paths:
+                if os.path.exists(path):
+                    ui.print_info(f"通过路径发现Git: {path}")
+                    return path
         
         ui.print_warning("未找到可用的Git可执行文件")
         return None

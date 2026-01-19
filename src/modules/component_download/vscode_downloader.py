@@ -269,29 +269,59 @@ class VSCODEDownloader(BaseDownloader):
         """检查VSCode是否已安装"""
         try:
             if self.system == 'windows':
-                # Windows - 检查注册表
+                # 1. 检查注册表 (HKCU 和 HKLM)
                 import winreg
+                registry_paths = [
+                    (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft VSCode"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft VSCode"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft VSCode"),
+                    # 系统级安装通常使用 UUID，这里尝试几个常见的，但主要依赖路径检测
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{EA457B21-F73E-4941-80D5-9755D09D5609}_is1")
+                ]
+                
+                for hkey, path in registry_paths:
+                    try:
+                        with winreg.OpenKey(hkey, path) as key:
+                            version, _ = winreg.QueryValueEx(key, "DisplayVersion")
+                            return True, f"VSCode 已安装 (注册表), 版本: {version}"
+                    except:
+                        continue
+                
+                # 2. 检查可执行文件 (PATH)
                 try:
-                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft VSCode") as key:
-                        version, _ = winreg.QueryValueEx(key, "DisplayVersion")
-                        return True, f"VSCode 已安装，版本: {version}"
-                except:
-                    pass
+                    import subprocess
+                    # 使用 CREATE_NO_WINDOW 避免闪烁
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    
+                    # 尝试 shell=True 以支持 cmd/bat 别名
+                    result = subprocess.run(
+                        "code --version",
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        startupinfo=startupinfo
+                    )
+                    
+                    if result.returncode == 0:
+                        version = result.stdout.strip().split('\n')[0]
+                        return True, f"VSCode 已安装 (命令行), 版本: {version}"
+                except Exception as e:
+                    logger.debug(f"VSCode 命令行检测失败: {e}")
                 
-                # 检查可执行文件
-                import subprocess
-                result = subprocess.run(
-                    ["code", "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
+                # 3. 检查常见安装路径
+                common_paths = [
+                    os.path.join(os.environ.get('LOCALAPPDATA', ''), r'Programs\Microsoft VS Code\Code.exe'),
+                    os.path.join(os.environ.get('PROGRAMFILES', ''), r'Microsoft VS Code\Code.exe'),
+                    os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), r'Microsoft VS Code\Code.exe'),
+                ]
                 
-                if result.returncode == 0:
-                    version = result.stdout.strip()
-                    return True, f"VSCode 已安装，版本: {version}"
-                else:
-                    return False, "VSCode 未安装"
+                for path in common_paths:
+                    if os.path.exists(path):
+                         return True, f"VSCode 已安装 (路径检测)"
+
+                return False, "VSCode 未安装"
             
             else:
                 # Linux/macOS - 检查code命令

@@ -1099,6 +1099,16 @@ class MaiMaiLauncher:
         try:
             logger.info("启动器主循环开始")
             
+            # 新手引导检测
+            if p_config_manager.get("first_run", False):
+                try:
+                    from src.modules.onboarding import run_onboarding
+                    run_onboarding()
+                except Exception as e:
+                    logger.error("新手引导运行失败", error=str(e))
+                    ui.print_error(f"新手引导运行失败: {str(e)}")
+                    ui.pause()
+
             while self.running:
                 # 检查是否有活跃实例来决定菜单显示
                 has_active = self._has_active_instance()
