@@ -190,6 +190,7 @@ def needs_adapter(version: str, bot_type: str = "MaiBot") -> bool:
 def get_adapter_version(version: str, bot_type: str = "MaiBot") -> str:
     """
     根据MaiBot版本确定适配器版本
+    统一使用最新版启动器（main分支）
     
     Args:
         version: MaiBot版本号
@@ -201,46 +202,9 @@ def get_adapter_version(version: str, bot_type: str = "MaiBot") -> str:
     if is_legacy_version_with_bot_type(version, bot_type):
         return "无需适配器"
     
-    version_clean = version.lower().strip()
-    
-    # 处理分支版本
-    if "main" in version_clean:
-        return "main"
-    elif "dev" in version_clean:
-        return "dev"
-    
-    try:
-        # 移除v前缀
-        if version_clean.startswith("v"):
-            version_clean = version_clean[1:]
-        
-        # 移除可能的括号和说明文字
-        version_clean = re.sub(r'\s*\([^)]*\)', '', version_clean).strip()
-        
-        # 分离版本号和可能的后缀
-        version_parts = version_clean.split('-')[0].split('.')
-        
-        if not version_parts or not version_parts[0].isdigit():
-            return "未知版本"
-        
-        major = int(version_parts[0]) if len(version_parts) > 0 and version_parts[0].isdigit() else 0
-        minor = int(version_parts[1]) if len(version_parts) > 1 and version_parts[1].isdigit() else 0
-        
-        if major == 0:
-            if minor == 6:
-                return "0.2.3"  # 0.6.x 使用 0.2.3
-            elif 7 <= minor <= 8:
-                return "0.4.2"  # 0.7.x-0.8.x 使用 0.4.2
-            elif minor >= 9:
-                return "main"   # 0.9.x+ 使用 main
-        else:
-            return "main"  # 1.x+ 使用 main
-        
-        return "main"  # 默认使用main
-        
-    except (ValueError, IndexError):
-        logger.warning("版本号解析失败，使用main分支适配器", version=version)
-        return "main"
+    # 统一使用main分支的最新适配器
+    logger.info("统一使用最新版启动器", version=version, adapter_version="main")
+    return "main"
 
 
 def parse_version(version: str) -> Tuple[int, int, int]:

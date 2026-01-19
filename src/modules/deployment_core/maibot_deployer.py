@@ -106,10 +106,8 @@ class MaiBotDeployer(BaseDeployer):
         
         ui.print_info("适配器选择规则：")
         ui.console.print("  • 0.5.x及以下：无需适配器")
-        ui.console.print("  • 0.6.x 版本：使用0.2.3版本适配器")
-        ui.console.print("  • 0.7.x-0.8.x 版本：使用0.4.2版本适配器")
-        ui.console.print("  • main分支：使用main分支适配器")
-        ui.console.print("  • dev分支：使用dev分支适配器")
+        ui.console.print("  • 其他所有版本：统一使用最新版启动器（main分支）")
+        ui.console.print("  • 部署方式：优先使用git clone，失败时回退到下载压缩包")
         
         # 判断是否需要适配器
         adapter_path = self._determine_adapter_requirements(version_to_check, bot_path)
