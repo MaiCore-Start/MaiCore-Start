@@ -13,3 +13,4 @@ psutil
 pystray==0.19.5
 pillow==10.4.0
 winotify
+packaging

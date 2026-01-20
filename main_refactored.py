@@ -302,11 +302,11 @@ class MaiMaiLauncher:
     def handle_about_menu(self):
         """处理关于菜单"""
         ui.clear_screen()
-        ui.console.print("===关于本程序===", style=ui.colors["primary"])
-        ui.console.print("麦麦核心启动器控制台", style=ui.colors["primary"])
-        ui.console.print("=================")
+        ui.console.print("=========>>>关于本程序<<<=========", style=ui.colors["primary"])
+        ui.console.print("麦麦核心启动器控制台 MaiCore Start", style=ui.colors["primary"])
+        ui.console.print("=================================")
         
-        ui.console.print("版本：V4.1.5-beta", style=ui.colors["info"])
+        ui.console.print("版本：V4.2.0-beta", style=ui.colors["info"])
         ui.console.print("新增亮点：", style=ui.colors["success"])
         ui.console.print("  • 模块化部署逻辑", style="white")
         ui.console.print("  • 精确的资源监控器", style="white")
@@ -314,6 +314,7 @@ class MaiMaiLauncher:
         ui.console.print("  • 改进的错误处理", style="white")
         ui.console.print("  • 实例多开端口自动分配", style="white")
         ui.console.print("  • 代理功能", style="white")
+        ui.console.print("  • 插件功能", style="white")
         
         ui.console.print("\n技术栈：", style=ui.colors["info"])
         ui.console.print("  • Python 3.12.8", style="white")
