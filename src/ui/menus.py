@@ -83,7 +83,7 @@ o&o        o&&&o `Y&bood&P'         &*`&&&&&P'    `&&&` `Y&&&``qo d&&&b      `&&
         self.console.print("====>>功能类<<====")
         self.console.print(f" [C] {self.symbols['knowledge']} 知识库构建", style=self.colors["secondary"])
         self.console.print(f" [D] {self.symbols['database']} 数据库迁移（MongoDB → SQLite）", style=self.colors["secondary"])
-        self.console.print(f" [E] {self.symbols['plugin']} 插件管理（目前只是一个ui）", style=self.colors["primary"])
+        self.console.print(f" [E] {self.symbols['plugin']} 插件管理（目前只支持MaiBot）", style=self.colors["primary"])
         
         self.console.print("====>>部署类<<====")
         self.console.print(f" [F] {self.symbols['deployment']} 实例部署辅助系统", style=self.colors["error"])

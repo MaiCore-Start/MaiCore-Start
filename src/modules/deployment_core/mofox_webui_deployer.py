@@ -130,174 +130,29 @@ class MoFoxWebUIDeployer:
                 ui.print_warning(f"WebUI目录已存在，将先删除: {backend_path}")
                 shutil.rmtree(backend_path)
             
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # 下载文件
-                ui.print_info("正在下载MoFox WebUI...")
-                archive_path = os.path.join(temp_dir, "mofox-webui-backend.zip")
-                
-                # 添加下载重试机制
-                max_download_retries = 3
-                download_retry_count = 0
-                
-                while download_retry_count < max_download_retries:
-                    try:
-                        ui.print_info(f"正在下载MoFox WebUI... (尝试 {download_retry_count + 1}/{max_download_retries})")
-                        response = requests.get(release_info["download_url"], timeout=300, stream=True)
-                        response.raise_for_status()
-                        
-                        # 获取文件总大小
-                        total_size = int(response.headers.get('content-length', 0))
-                        downloaded_size = 0
-                        
-                        # 使用Rich Progress组件显示进度
-                        with Progress(
-                            SpinnerColumn(),
-                            TextColumn("[progress.description]{task.description}"),
-                            BarColumn(),
-                            TaskProgressColumn(),
-                            console=ui.console,
-                            transient=True
-                        ) as progress:
-                            download_task = progress.add_task("下载中...", total=total_size if total_size > 0 else None)
-                            
-                            with open(archive_path, 'wb') as f:
-                                for chunk in response.iter_content(chunk_size=8192):
-                                    if chunk:
-                                        f.write(chunk)
-                                        downloaded_size += len(chunk)
-                                        
-                                        # 更新进度条
-                                        if total_size > 0:
-                                            progress.update(download_task, completed=downloaded_size)
-                                        else:
-                                            # 如果无法获取总大小，使用不确定进度
-                                            progress.advance(download_task)
-                        
-                        ui.print_success("下载完成")
-                        break  # 下载成功，退出重试循环
-                        
-                    except requests.RequestException as e:
-                        download_retry_count += 1
-                        error_msg = f"下载失败: {e}"
-                        
-                        if download_retry_count < max_download_retries:
-                            ui.print_warning(f"{error_msg} (尝试 {download_retry_count}/{max_download_retries})")
-                            ui.print_info("正在重试...")
-                            
-                            # 等待一段时间再重试
-                            time.sleep(2)
-                            
-                            # 删除可能不完整的文件
-                            if os.path.exists(archive_path):
-                                os.remove(archive_path)
-                        else:
-                            ui.print_error(f"{error_msg} (已重试 {max_download_retries} 次)")
-                            logger.error("MoFox WebUI下载失败", error=str(e))
-                            return False, ""
-                            
-                    except Exception as e:
-                        ui.print_error(f"下载过程中发生未知错误: {e}")
-                        logger.error("下载过程中发生未知错误", error=str(e))
-                        return False, ""
-                
-                # 检查下载的文件是否存在且不为空
-                if not os.path.exists(archive_path) or os.path.getsize(archive_path) == 0:
-                    ui.print_error("下载的文件不存在或为空")
-                    return False, ""
-                
-                # 解压文件
-                ui.print_info("正在解压WebUI文件...")
-                
-                # 添加解压重试机制
-                max_extract_retries = 2
-                extract_retry_count = 0
-                
-                while extract_retry_count < max_extract_retries:
-                    try:
-                        with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                            # 验证ZIP文件完整性
-                            bad_file = zip_ref.testzip()
-                            if bad_file:
-                                ui.print_error(f"ZIP文件损坏: {bad_file}")
-                                raise zipfile.BadZipFile(f"损坏的文件: {bad_file}")
-                            
-                            zip_ref.extractall(temp_dir)
-                        
-                        # 查找解压后的backend目录
-                        extracted_dirs = []
-                        for item in os.listdir(temp_dir):
-                            item_path = os.path.join(temp_dir, item)
-                            if os.path.isdir(item_path):
-                                extracted_dirs.append(item_path)
-                        
-                        if not extracted_dirs:
-                            ui.print_error("解压后未找到目录")
-                            raise Exception("解压后未找到目录")
-                        
-                        # 假设第一个目录是backend目录
-                        backend_source = extracted_dirs[0]
-                        
-                        # 移动到目标位置并重命名为backend
-                        ui.print_info("正在安装WebUI到插件目录...")
-                        shutil.move(backend_source, backend_path)
-                        
-                        ui.print_success(f"✅ MoFox WebUI安装完成")
-                        ui.print_info(f"安装路径: {backend_path}")
-                        
-                        return True, backend_path
-                        
-                    except zipfile.BadZipFile as e:
-                        extract_retry_count += 1
-                        if extract_retry_count < max_extract_retries:
-                            ui.print_warning(f"ZIP文件格式错误 (尝试 {extract_retry_count}/{max_extract_retries})")
-                            ui.print_info("正在重新下载...")
-                            
-                            # 重新下载
-                            if os.path.exists(archive_path):
-                                os.remove(archive_path)
-                            
-                            # 重新下载
-                            try:
-                                response = requests.get(release_info["download_url"], timeout=300, stream=True)
-                                response.raise_for_status()
-                                
-                                with open(archive_path, 'wb') as f:
-                                    for chunk in response.iter_content(chunk_size=8192):
-                                        if chunk:
-                                            f.write(chunk)
-                                
-                                ui.print_success("重新下载完成")
-                                continue  # 继续重试解压
-                                
-                            except Exception as re_download_error:
-                                ui.print_error(f"重新下载失败: {re_download_error}")
-                                return False, ""
-                        else:
-                            ui.print_error("ZIP文件格式错误，已重试多次")
-                            logger.error("ZIP文件格式错误", error=str(e))
-                            return False, ""
-                            
-                    except Exception as e:
-                        extract_retry_count += 1
-                        if extract_retry_count < max_extract_retries:
-                            ui.print_warning(f"解压失败 (尝试 {extract_retry_count}/{max_extract_retries}): {e}")
-                            ui.print_info("正在重试...")
-                            
-                            # 清理可能的部分解压文件
-                            if os.path.exists(backend_path):
-                                shutil.rmtree(backend_path, ignore_errors=True)
-                            
-                            time.sleep(1)
-                            continue  # 继续重试
-                        else:
-                            ui.print_error(f"解压失败，已重试 {max_extract_retries} 次: {e}")
-                            logger.error("解压失败", error=str(e))
-                            return False, ""
+            # 优先使用Git clone，失败时回退到下载压缩包
+            repo = "MoFox-Studio/MoFox-Core-Webui"
+            fallback_url = release_info.get("download_url")
+            
+            # 使用基础部署器的方法
+            from .base_deployer import BaseDeployer
+            base_deployer = BaseDeployer()
+            
+            if base_deployer.download_with_git_fallback(repo, backend_path, "main", fallback_url):
+                ui.print_success(f"✅ MoFox WebUI安装完成")
+                ui.print_info(f"安装路径: {backend_path}")
+                return True, backend_path
+            else:
+                ui.print_error("MoFox WebUI安装失败")
+                return False, ""
                 
         except Exception as e:
             ui.print_error(f"MoFox WebUI部署失败: {e}")
             logger.error("MoFox WebUI部署失败", error=str(e))
             return False, ""
+        
+        # 确保所有代码路径都有返回值
+        return False, ""
     
     def configure_api_key(self, webui_path: str, bot_path: str) -> bool:
         """

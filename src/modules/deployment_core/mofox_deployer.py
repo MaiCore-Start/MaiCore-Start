@@ -42,55 +42,43 @@ class MoFoxBotDeployer(BaseDeployer):
         selected_version = deploy_config["selected_version"]
         install_dir = deploy_config["install_dir"]
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # 下载源码
-            ui.print_info("正在下载MoFox-Core源码...")
-            download_url = selected_version["download_url"]
-            archive_path = os.path.join(temp_dir, f"{selected_version['name']}.zip")
-            
-            if not self.download_file(download_url, archive_path):
-                ui.print_error("MoFox-Core下载失败")
+        # 使用实例名称作为父目录，与MaiBot保持一致
+        nickname = deploy_config.get("nickname", "MoFox-Core_instance")
+        instance_dir = os.path.join(install_dir, nickname)
+        target_dir = os.path.join(instance_dir, "MoFox-Core")
+        
+        # 创建实例目录
+        os.makedirs(instance_dir, exist_ok=True)
+        
+        # 检查目标目录是否已存在
+        if os.path.exists(target_dir):
+            ui.print_warning(f"目标目录已存在，将先删除: {target_dir}")
+            try:
+                shutil.rmtree(target_dir)
+            except Exception as e:
+                ui.print_error(f"删除旧目录失败: {str(e)}")
                 return None
-            
-            # 解压到临时目录
-            ui.print_info("正在解压MoFox-Core...")
-            if not self.extract_archive(archive_path, temp_dir):
-                ui.print_error("MoFox-Core解压失败")
-                return None
-            
-            # 查找解压后的目录
-            extracted_dirs = [d for d in os.listdir(temp_dir)
-                            if os.path.isdir(os.path.join(temp_dir, d)) and d != "__MACOSX"]
-            if not extracted_dirs:
-                ui.print_error("解压后未找到项目目录")
-                return None
-            
-            source_dir = os.path.join(temp_dir, extracted_dirs[0])
-            
-            # 创建目标目录并复制文件
-            # 使用实例名称作为父目录，与MaiBot保持一致
-            nickname = deploy_config.get("nickname", "MoFox-Core_instance")
-            instance_dir = os.path.join(install_dir, nickname)
-            target_dir = os.path.join(instance_dir, "MoFox-Core")
-            
-            # 创建实例目录
-            os.makedirs(instance_dir, exist_ok=True)
-            
-            # 检查目标目录是否已存在
-            if os.path.exists(target_dir):
-                ui.print_warning(f"目标目录已存在，将先删除: {target_dir}")
-                try:
-                    shutil.rmtree(target_dir)
-                except Exception as e:
-                    ui.print_error(f"删除旧目录失败: {str(e)}")
-                    return None
-            
-            ui.print_info("正在安装MoFox-Core文件...")
-            shutil.copytree(source_dir, target_dir)
-            
+        
+        # 确定分支名称
+        version_name = selected_version.get("name", "main")
+        version_type = selected_version.get("type", "release")
+        
+        if version_type == "branch":
+            branch = version_name
+        else:
+            # 对于release版本，使用main分支
+            branch = "main"
+        
+        # 优先使用Git clone，失败时回退到下载压缩包
+        fallback_url = selected_version.get("download_url")
+        
+        if self.download_with_git_fallback(self.repo, target_dir, branch, fallback_url):
             ui.print_success("✅ MoFox-Core安装完成")
-            logger.info("MoFox-Core安装成功", path=target_dir)
+            logger.info("MoFox-Core安装成功", path=target_dir, method="git_or_download")
             return target_dir
+        else:
+            ui.print_error("MoFox-Core安装失败")
+            return None
     
     def setup_config_files(self, deploy_config: Dict, bot_path: str, 
                           adapter_path: str = "", napcat_path: str = "",

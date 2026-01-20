@@ -42,55 +42,43 @@ class MaiBotDeployer(BaseDeployer):
         selected_version = deploy_config["selected_version"]
         install_dir = deploy_config["install_dir"]
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # 下载源码
-            ui.print_info("正在下载MaiBot源码...")
-            download_url = selected_version["download_url"]
-            archive_path = os.path.join(temp_dir, f"{selected_version['name']}.zip")
-            
-            if not self.download_file(download_url, archive_path):
-                ui.print_error("MaiBot下载失败")
+        # 使用实例昵称作为父目录，与MoFox_bot保持一致
+        nickname = deploy_config.get("nickname", "MaiBot_instance")
+        instance_dir = os.path.join(install_dir, nickname)
+        target_dir = os.path.join(instance_dir, "MaiBot")
+        
+        # 创建实例目录
+        os.makedirs(instance_dir, exist_ok=True)
+        
+        # 检查目标目录是否已存在
+        if os.path.exists(target_dir):
+            ui.print_warning(f"目标目录已存在，将先删除: {target_dir}")
+            try:
+                shutil.rmtree(target_dir)
+            except Exception as e:
+                ui.print_error(f"删除旧目录失败: {str(e)}")
                 return None
-            
-            # 解压到临时目录
-            ui.print_info("正在解压MaiBot...")
-            if not self.extract_archive(archive_path, temp_dir):
-                ui.print_error("MaiBot解压失败")
-                return None
-            
-            # 查找解压后的目录
-            extracted_dirs = [d for d in os.listdir(temp_dir)
-                            if os.path.isdir(os.path.join(temp_dir, d)) and d != "__MACOSX"]
-            if not extracted_dirs:
-                ui.print_error("解压后未找到项目目录")
-                return None
-            
-            source_dir = os.path.join(temp_dir, extracted_dirs[0])
-            
-            # 创建目标目录并复制文件
-            # 使用实例昵称作为父目录，与MoFox_bot保持一致
-            nickname = deploy_config.get("nickname", "MaiBot_instance")
-            instance_dir = os.path.join(install_dir, nickname)
-            target_dir = os.path.join(instance_dir, "MaiBot")
-            
-            # 创建实例目录
-            os.makedirs(instance_dir, exist_ok=True)
-            
-            # 检查目标目录是否已存在
-            if os.path.exists(target_dir):
-                ui.print_warning(f"目标目录已存在，将先删除: {target_dir}")
-                try:
-                    shutil.rmtree(target_dir)
-                except Exception as e:
-                    ui.print_error(f"删除旧目录失败: {str(e)}")
-                    return None
-            
-            ui.print_info("正在安装MaiBot文件...")
-            shutil.copytree(source_dir, target_dir)
-            
+        
+        # 确定分支名称
+        version_name = selected_version.get("name", "main")
+        version_type = selected_version.get("type", "release")
+        
+        if version_type == "branch":
+            branch = version_name
+        else:
+            # 对于release版本，使用main分支
+            branch = "main"
+        
+        # 优先使用Git clone，失败时回退到下载压缩包
+        fallback_url = selected_version.get("download_url")
+        
+        if self.download_with_git_fallback(self.repo, target_dir, branch, fallback_url):
             ui.print_success("✅ MaiBot安装完成")
-            logger.info("MaiBot安装成功", path=target_dir)
+            logger.info("MaiBot安装成功", path=target_dir, method="git_or_download")
             return target_dir
+        else:
+            ui.print_error("MaiBot安装失败")
+            return None
     
     def install_adapter(self, deploy_config: Dict, bot_path: str) -> str:
         """
@@ -118,10 +106,8 @@ class MaiBotDeployer(BaseDeployer):
         
         ui.print_info("适配器选择规则：")
         ui.console.print("  • 0.5.x及以下：无需适配器")
-        ui.console.print("  • 0.6.x 版本：使用0.2.3版本适配器")
-        ui.console.print("  • 0.7.x-0.8.x 版本：使用0.4.2版本适配器")
-        ui.console.print("  • main分支：使用main分支适配器")
-        ui.console.print("  • dev分支：使用dev分支适配器")
+        ui.console.print("  • 其他所有版本：统一使用最新版启动器（main分支）")
+        ui.console.print("  • 部署方式：优先使用git clone，失败时回退到下载压缩包")
         
         # 判断是否需要适配器
         adapter_path = self._determine_adapter_requirements(version_to_check, bot_path)
@@ -176,49 +162,38 @@ class MaiBotDeployer(BaseDeployer):
     
     def _download_specific_adapter_version(self, adapter_version: str, maibot_path: str) -> str:
         """下载特定版本的适配器"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            if adapter_version in ["main", "dev"]:
-                ui.print_info(f"正在下载{adapter_version}分支的适配器...")
-                adapter_url = f"https://codeload.github.com/{self.adapter_repo}/zip/refs/heads/{adapter_version}"
-            else:
-                ui.print_info(f"正在下载v{adapter_version}版本的适配器...")
-                adapter_url = f"https://codeload.github.com/{self.adapter_repo}/zip/refs/tags/{adapter_version}"
-            
-            adapter_zip = os.path.join(temp_dir, f"adapter_{adapter_version}.zip")
-            
-            if not self.download_file(adapter_url, adapter_zip):
-                ui.print_warning(f"适配器下载失败")
-                return f"适配器下载失败"
-            
-            # 解压到临时目录
-            temp_extract = os.path.join(temp_dir, f"adapter_extract")
-            if not self.extract_archive(adapter_zip, temp_extract):
-                ui.print_warning("适配器解压失败")
-                return "适配器解压失败"
-            
-            # 查找解压后的目录并复制到正确位置
-            extracted_dirs = [d for d in os.listdir(temp_extract) 
-                            if os.path.isdir(os.path.join(temp_extract, d))]
-            
-            # 修改：适配器安装到主程序的同父级目录下，而非主程序目录下
-            maibot_parent_dir = os.path.dirname(maibot_path)
-            adapter_extract_path = os.path.join(maibot_parent_dir, "MaiBot-Napcat-Adapter")
-            
-            if extracted_dirs:
-                # 找到解压后的根目录
-                source_adapter_dir = os.path.join(temp_extract, extracted_dirs[0])
-                
-                # 确保目标目录不存在，然后复制
-                if os.path.exists(adapter_extract_path):
-                    shutil.rmtree(adapter_extract_path)
-                shutil.copytree(source_adapter_dir, adapter_extract_path)
-                
-                ui.print_success(f"适配器安装完成")
-                logger.info("适配器安装成功", version=adapter_version, path=adapter_extract_path)
-                return adapter_extract_path
-            else:
-                ui.print_warning("适配器解压后未找到目录")
-                return "适配器解压失败"
+        # 修改：适配器安装到主程序的同父级目录下，而非主程序目录下
+        maibot_parent_dir = os.path.dirname(maibot_path)
+        adapter_extract_path = os.path.join(maibot_parent_dir, "MaiBot-Napcat-Adapter")
+        
+        # 如果目标目录已存在，先删除
+        if os.path.exists(adapter_extract_path):
+            try:
+                shutil.rmtree(adapter_extract_path)
+            except Exception as e:
+                ui.print_warning(f"删除旧适配器目录失败: {str(e)}")
+        
+        # 确定分支名称
+        if adapter_version in ["main", "dev"]:
+            branch = adapter_version
+        else:
+            # 对于版本号，使用main分支
+            branch = "main"
+        
+        # 优先使用Git clone，失败时回退到下载压缩包
+        fallback_url = None
+        if adapter_version in ["main", "dev"]:
+            fallback_url = f"https://codeload.github.com/{self.adapter_repo}/zip/refs/heads/{adapter_version}"
+        else:
+            fallback_url = f"https://codeload.github.com/{self.adapter_repo}/zip/refs/tags/{adapter_version}"
+        
+        if self.download_with_git_fallback(self.adapter_repo, adapter_extract_path, branch, fallback_url):
+            ui.print_success(f"适配器安装完成")
+            logger.info("适配器安装成功", version=adapter_version, path=adapter_extract_path)
+            return adapter_extract_path
+        else:
+            ui.print_warning("适配器安装失败")
+            return "适配器安装失败"
     
     def setup_config_files(self, deploy_config: Dict, bot_path: str, 
                           adapter_path: str = "", napcat_path: str = "",

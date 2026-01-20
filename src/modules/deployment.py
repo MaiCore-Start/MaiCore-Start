@@ -25,7 +25,8 @@ from .webui_installer import webui_installer
 from .deployment_core import (
     MaiBotDeployer,
     MoFoxBotDeployer,
-    NapCatDeployer
+    NapCatDeployer,
+    InstanceUpdater
 )
 
 logger = structlog.get_logger(__name__)
@@ -39,6 +40,7 @@ class DeploymentManager:
         self.maibot_deployer = MaiBotDeployer()
         self.mofox_deployer = MoFoxBotDeployer()
         self.napcat_deployer = NapCatDeployer()
+        self.instance_updater = InstanceUpdater()
         
         # 离线模式标志
         self._offline_mode = False
@@ -774,10 +776,7 @@ class DeploymentManager:
             return False, ""
     
     def update_instance(self) -> bool:
-        """更新实例"""
-        ui.clear_screen()
-        ui.components.show_title("实例更新助手", symbol="🔄")
-        
+        """更新实例 - 使用InstanceUpdater进行安全更新"""
         try:
             # 获取所有实例配置
             configs = config_manager.get_all_configurations()
@@ -847,11 +846,6 @@ class DeploymentManager:
             ui.console.print(f"Bot类型: {bot_type}", style=ui.colors["info"])
             ui.console.print(f"当前版本: {current_version}", style=ui.colors["info"])
             
-            # 确认更新
-            if not ui.confirm("确定要更新此实例吗？这将下载新版本并可能覆盖现有文件。"):
-                ui.print_info("已取消更新操作。")
-                return False
-            
             # 根据Bot类型选择版本管理器
             if bot_type == "MaiBot":
                 version_manager = self.maibot_deployer.version_manager
@@ -864,14 +858,8 @@ class DeploymentManager:
                 ui.print_info("已取消版本选择。")
                 return False
             
-            ui.print_info(f"开始更新 {nickname} 从版本 {current_version} 到 {new_version['display_name']}...")
-            
-            # 这里可以实现具体的更新逻辑
-            # 目前只是显示更新完成的信息
-            ui.print_success(f"实例 {nickname} 更新完成！")
-            ui.print_info("请重启实例以应用新版本。")
-            
-            return True
+            # 使用InstanceUpdater进行安全更新
+            return self.instance_updater.update_instance(serial_input, new_version)
             
         except Exception as e:
             ui.print_error(f"实例更新失败: {str(e)}")
