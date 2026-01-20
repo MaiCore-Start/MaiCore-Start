@@ -5,6 +5,7 @@ chcp 65001 >nul
 if /i "%1"=="-v" goto show_version
 if /i "%1"=="Version" goto show_version
 if /i "%1"=="version" goto show_version
+if /i "%1"=="--version" goto j_version
 
 set "CUR_DIR=%~dp0"
 for %%I in ("%CUR_DIR%..") do set "PARENT_DIR=%%~fI"
@@ -53,4 +54,7 @@ echo "  mcs411b version      - 显示版本信息"
 echo.
 echo ========================================
 echo.
+
+:j_version
+echo MaiCoreStart version v4.2.0-beta
 goto :eof
