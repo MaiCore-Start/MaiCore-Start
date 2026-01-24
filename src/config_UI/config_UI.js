@@ -76,13 +76,20 @@ const fieldLabels = {
     qq_account: "QQ账号"
 };
 
+let isSelectionMode = false;
+let selectedConfigs = new Set();
+
 function createCard(name, data) {
     const card = document.createElement("div");
     card.className = "config-card";
+    if (isSelectionMode) card.classList.add("selection-mode");
+    if (selectedConfigs.has(name)) card.classList.add("selected");
+
     card.innerHTML = `
+        <div class="select-indicator"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div class="config-title">${name}</div>
-            <button class="btn btn-delete" title="删除" style="padding:2px 10px;font-size:14px;">×</button>
+            <button class="btn btn-delete" title="删除" style="padding:2px 10px;font-size:14px;${isSelectionMode ? 'display:none' : ''}">×</button>
         </div>
         <div class="config-info">序列号: ${data.serial_number || ""}</div>
         <div class="config-info">Bot类型: ${data.bot_type || "MaiBot"}</div>
@@ -92,19 +99,68 @@ function createCard(name, data) {
     `;
     card.onclick = (e) => {
         if (e.target.classList.contains("btn-delete")) return;
-        showModal(name, data);
-    };
-    card.querySelector(".btn-delete").onclick = (e) => {
-        e.stopPropagation();
-        if (confirm(`确定要删除配置集 "${name}" 吗？`)) {
-            fetch(`${apiBase}/configs/${name}`, { method: "DELETE" })
-                .then(r => r.json()).then(res => {
-                    if (res.success) loadConfigs();
-                    else alert("删除失败: " + (res.msg || ""));
-                });
+        if (isSelectionMode) {
+            toggleSelectConfig(name);
+        } else {
+            showModal(name, data);
         }
     };
+    const delBtn = card.querySelector(".btn-delete");
+    if (delBtn) {
+        delBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (confirm(`确定要删除配置集 "${name}" 吗？`)) {
+                fetch(`${apiBase}/configs/${name}`, { method: "DELETE" })
+                    .then(r => r.json()).then(res => {
+                        if (res.success) loadConfigs();
+                        else alert("删除失败: " + (res.msg || ""));
+                    });
+            }
+        };
+    }
     return card;
+}
+
+function toggleSelectionMode() {
+    isSelectionMode = !isSelectionMode;
+    selectedConfigs.clear();
+    updateBatchUI();
+    loadConfigs(); 
+}
+
+function toggleSelectConfig(name) {
+    if (selectedConfigs.has(name)) {
+        selectedConfigs.delete(name);
+    } else {
+        selectedConfigs.add(name);
+    }
+    updateBatchUI();
+    const cards = document.querySelectorAll(".config-card");
+    cards.forEach(card => {
+        if (card.querySelector(".config-title").textContent === name) {
+            if (selectedConfigs.has(name)) card.classList.add("selected");
+            else card.classList.remove("selected");
+        }
+    });
+}
+
+function updateBatchUI() {
+    const batchBtn = document.getElementById("batch-select-btn");
+    const delBtn = document.getElementById("batch-delete-btn");
+    const addBtn = document.getElementById("add-config-btn");
+    
+    if (isSelectionMode) {
+        batchBtn.textContent = "取消选择";
+        batchBtn.style.background = "#aaa";
+        delBtn.style.display = "inline-block";
+        delBtn.textContent = `删除选中(${selectedConfigs.size})`;
+        addBtn.style.display = "none";
+    } else {
+        batchBtn.textContent = "批量管理";
+        batchBtn.style.background = "#607d8b";
+        delBtn.style.display = "none";
+        addBtn.style.display = "inline-block";
+    }
 }
 
 function renderConfigs(configs) {
@@ -350,6 +406,27 @@ window.onload = async () => {
     };
     // 只保留这一行，绑定自定义设置弹窗
     document.getElementById("settings-btn").onclick = showSettingsModal;
+
+    // 绑定批量管理按钮
+    document.getElementById("batch-select-btn").onclick = toggleSelectionMode;
+    document.getElementById("batch-delete-btn").onclick = async () => {
+        if (selectedConfigs.size === 0) return;
+        if (!confirm(`确定要删除选中的 ${selectedConfigs.size} 个配置集吗？`)) return;
+        
+        const names = Array.from(selectedConfigs);
+        const res = await fetch(`${apiBase}/configs/batch_delete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ names })
+        }).then(r => r.json());
+        
+        if (res.success) {
+            showMessage(`成功删除 ${res.deleted} 个配置集`, 'success');
+            toggleSelectionMode(); // Exit selection mode
+        } else {
+            showMessage("批量删除失败: " + (res.msg || ""), 'error');
+        }
+    };
 
     // 主题初始化（优先从后端加载）
     let serverTheme = await loadThemeFromServer();

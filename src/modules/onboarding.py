@@ -7,6 +7,7 @@ import os
 import time
 import random
 import tempfile
+import webbrowser
 from pathlib import Path
 import structlog
 from rich.console import Console
@@ -23,6 +24,7 @@ from rich.segment import Segment
 from rich.style import Style
 
 from ..core.p_config import p_config_manager
+from ..core.config import config_manager
 from ..ui.interface import ui
 from .component_download.vscode_downloader import VSCODEDownloader
 from .component_download.git_downloader import GitDownloader
@@ -289,7 +291,7 @@ def run_onboarding():
     welcome_segments = [
         ("检测到您是首次运行本程序。\n为了让您获得最佳体验，我们将引导您完成必要的环境配置和第一个实例的部署。\n\n", ""),
         ("引导内容：\n", "bold"),
-        ("1. 检查并安装必要组件 (VSCode, Git)\n2. 部署您的第一个机器人实例", "")
+        ("1. 检查并安装必要组件 (VSCode, Git)\n2. 获取 API 秘钥 (SiliconFlow)\n3. 部署您的第一个机器人实例", "")
     ]
     
     # ASCII Art
@@ -309,7 +311,7 @@ def run_onboarding():
     # 获取屏幕宽度，使面板撑满屏幕
     screen_width = ui.console.size[0]
     panel_width = screen_width
-    panel_height = 20 # 增加高度以容纳 ASCII Art
+    panel_height = 21 # 增加高度以容纳 ASCII Art
     
     # 构造居中的 ASCII Art Text 对象
     content_inner_width = panel_width - 6
@@ -414,7 +416,10 @@ def run_onboarding():
     # 2. 组件检查与下载
     _check_and_install_components()
     
-    # 3. 部署第一个实例
+    # 3. 获取 API 秘钥
+    _guide_api_key_acquisition()
+    
+    # 4. 部署第一个实例
     _deploy_first_instance()
     
     _mark_as_not_first_run()
@@ -434,7 +439,7 @@ def run_onboarding():
 def _check_and_install_components():
     """检查并安装组件"""
     # 准备新界面内容
-    header_panel = Panel("[bold yellow]步骤 1/2: 环境检查与组件安装[/bold yellow]", border_style="yellow")
+    header_panel = Panel("[bold yellow]步骤 1/3: 环境检查与组件安装[/bold yellow]", border_style="yellow")
     
     # 执行转场动画进入新界面
     wipe_transition(header_panel)
@@ -478,10 +483,135 @@ def _check_and_install_components():
     ui.print_info("\n环境检查完成，按回车键继续...")
     ui.console.input()
 
+def _guide_api_key_acquisition():
+    """引导用户获取API Key"""
+    header_panel = Panel("[bold yellow]步骤 2/3: 获取API秘钥[/bold yellow]", border_style="yellow")
+    wipe_transition(header_panel)
+
+    _type_text("API就像是你的Bot的燃料，没有燃料Bot就无法正常运行。")
+    _type_text("麦麦和墨狐官方都默认使用硅基流动的API服务。")
+    ui.console.print()
+
+    # 1. Register
+    ui.print_info("1. 正在打开硅基流动注册页面...")
+    webbrowser.open("https://cloud.siliconflow.cn/i/JSydmfX7")
+    ui.print_info("请根据页面提示完成注册或登录。")
+    ui.console.input("完成后按回车键继续...")
+
+    # 2. Authentication
+    ui.print_info("\n2. 正在打开实名认证页面...")
+    webbrowser.open("https://cloud.siliconflow.cn/me/account/authentication")
+    ui.print_warning("请务必完成实名认证，不通过实名认证将无法使用API功能！")
+    ui.console.input("完成后按回车键继续...")
+
+    # 3. Voucher
+    ui.print_info("\n3. 正在打开代金券领取页面...")
+    webbrowser.open("https://cloud.siliconflow.cn/me/campaigns/real-name")
+    ui.print_info("请领取16元全平台通用代金券。")
+    ui.console.input("完成后按回车键继续...")
+
+    # 4. API Key
+    ui.print_info("\n4. 正在打开API秘钥管理页面...")
+    webbrowser.open("https://cloud.siliconflow.cn/me/account/ak")
+    ui.console.print("请按以下步骤操作：", style="cyan")
+    ui.console.print("  1. 点击 [bold]新建API秘钥[/bold]")
+    ui.console.print("  2. 秘钥描述处随意填写")
+    ui.console.print("  3. 点击 [bold]新建秘钥[/bold]")
+    ui.console.print("  4. [bold red]新建完成后点击新建的秘钥进行复制，稍后在配置Bot时会用到[/bold red]")
+    
+    ui.console.print()
+    ui.console.input("如果您已获取并复制了API秘钥，请按回车键进入下一步...")
+
+def _show_configuration_guide(instance_config):
+    """显示配置指南"""
+    bot_path = instance_config.get("mai_path") or instance_config.get("mofox_path")
+    if not bot_path:
+        return
+
+    adapter_path = instance_config.get("adapter_path")
+    bot_type = instance_config.get("bot_type", "MaiBot")
+    
+    ui.clear_screen()
+    ui.components.show_title("Bot配置指南", symbol="📖")
+    
+    ui.console.print("🎉 恭喜您成功部署了第一个Bot实例！接下来请按照以下指引完成配置。\n")
+
+    # 1. model_config.toml
+    ui.console.print(Panel("[bold cyan]1. 配置 API 秘钥 (model_config.toml)[/bold cyan]", expand=False))
+    model_config_path = os.path.join(bot_path, "config", "model_config.toml")
+    ui.console.print(f"文件路径: [link=file:///{model_config_path}]{model_config_path}[/link]")
+    ui.console.print("请找到以下内容：")
+    ui.console.print("""[dim]
+[[api_providers]]
+name = "SiliconFlow"
+base_url = "https://api.siliconflow.cn/v1"
+api_key = "your-siliconflow-api-key"
+client_type = "openai"
+max_retry = 3
+timeout = 120
+retry_interval = 5
+[/dim]""", style="green")
+    ui.console.print("\n将刚才获取的API秘钥填写在 [bold]api_key[/bold] 一栏，例如：")
+    ui.console.print('api_key = "sk-abcdefghijklmnopqrstuvwxyz"', style="bold green")
+    
+    ui.console.print("\n")
+
+    # 2. bot_config.toml
+    ui.console.print(Panel("[bold cyan]2. 配置 Bot 选项 (bot_config.toml)[/bold cyan]", expand=False))
+    bot_config_path = os.path.join(bot_path, "config", "bot_config.toml")
+    ui.console.print(f"文件路径: [link=file:///{bot_config_path}]{bot_config_path}[/link]")
+    
+    if bot_type == "MaiBot":
+        link = "https://docs.mai-mai.org/manual/configuration/configuration_standard.html"
+        ui.console.print(f"请参考麦麦配置指南：[link={link}]{link}[/link]")
+    else:
+        link = "https://docs.mofox-sama.com/docs/guides/bot_config_guide.html"
+        ui.console.print(f"请参考墨狐配置指南：[link={link}]{link}[/link]")
+    
+    ui.console.print("\n")
+
+    # 3. .env
+    ui.console.print(Panel("[bold cyan]3. 配置 WebUI 端口 (.env)，这步仅限MaiBot[/bold cyan]", expand=False))
+    env_path = os.path.join(bot_path, ".env")
+    ui.console.print(f"文件路径: [link=file:///{env_path}]{env_path}[/link]")
+    ui.console.print("""[dim]
+# 麦麦主程序配置
+HOST=127.0.0.1
+PORT=8000
+
+# WebUI 独立服务器配置
+WEBUI_ENABLED=true
+WEBUI_MODE=production   # 模式: development(开发) 或 production(生产)
+WEBUI_HOST=127.0.0.1
+WEBUI_PORT=8001         # WebUI 服务器端口
+[/dim]""", style="green")
+    ui.console.print("请确保 WebUI 服务端口 (WEBUI_PORT) 在 8001 且不与主程序端口 (PORT) 冲突。")
+
+    ui.console.print("\n")
+
+    # 4. Adapter config
+    ui.console.print(Panel("[bold cyan]4. 配置 适配器 (config.toml)[/bold cyan]", expand=False))
+    if adapter_path and adapter_path != "无需适配器":
+        adapter_config_path = os.path.join(adapter_path, "config.toml")
+        ui.console.print(f"文件路径: [link=file:///{adapter_config_path}]{adapter_config_path}[/link]")
+        ui.console.print("请在此文件中配置Bot的 [bold]群组白名单[/bold] 和 [bold]私聊白名单[/bold]。")
+    else:
+        ui.print_info("当前部署不需要配置外部适配器。")
+
+    ui.console.print("\n")
+    
+    # WebUI Info
+    if instance_config.get("install_options", {}).get("install_webui") or \
+       instance_config.get("install_options", {}).get("install_mofox_webui") or \
+       instance_config.get("install_options", {}).get("install_mofox_admin_ui"):
+        ui.print_info("提示：您可以启动Bot后在WebUI中进行更方便的配置。")
+    
+    ui.console.input("按回车键完成新手引导并进入主菜单...")
+
 def _deploy_first_instance():
     """部署第一个实例"""
     # 准备新界面内容
-    header_panel = Panel("[bold yellow]步骤 2/2: 部署第一个实例[/bold yellow]", border_style="yellow")
+    header_panel = Panel("[bold yellow]步骤 3/3: 部署第一个实例[/bold yellow]", border_style="yellow")
     
     # 执行转场动画
     wipe_transition(header_panel)
@@ -492,7 +622,22 @@ def _deploy_first_instance():
     _type_text("是否现在部署您的第一个机器人实例？", end="")
     if Confirm.ask("", default=True):
         try:
-            deployment_manager.deploy_instance()
+            success = deployment_manager.deploy_instance()
+            if success:
+                # 重新加载配置以确保获取最新数据
+                config_manager.load()
+                
+                # 获取最新部署的配置
+                current_config_name = config_manager.get("current_config")
+                if current_config_name:
+                    # 获取配置详情
+                    configurations = config_manager.get_all_configurations()
+                    current_config = configurations.get(current_config_name)
+                    
+                    if current_config:
+                        _show_configuration_guide(current_config)
+                    else:
+                        logger.error("新手引导：未找到当前配置详细信息", config_name=current_config_name)
         except Exception as e:
             ui.print_error(f"部署过程中发生错误: {str(e)}")
             logger.error("新手引导部署失败", error=str(e))
