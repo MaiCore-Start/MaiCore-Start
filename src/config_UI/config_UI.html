@@ -15,7 +15,11 @@
                 <button id="settings-btn" class="btn" style="background:#eee;color:#333;margin-left:20px;">⚙ 设置</button>
             </div>
         </div>
-        <button id="add-config-btn" class="btn" style="margin-bottom:20px;">新建配置集</button>
+        <div style="margin-bottom:20px;display:flex;align-items:center;">
+            <button id="add-config-btn" class="btn" style="margin-left:0;">新建配置集</button>
+            <button id="batch-select-btn" class="btn" style="margin-left:10px;background:#607d8b;">批量管理</button>
+            <button id="batch-delete-btn" class="btn" style="margin-left:10px;background:#e74c3c;display:none;">删除选中(0)</button>
+        </div>
         <div id="config-list" class="config-list"></div>
     </div>
     <div id="modal" class="modal">

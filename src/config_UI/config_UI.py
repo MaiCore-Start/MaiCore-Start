@@ -76,6 +76,28 @@ def get_configs():
     configs = config.get("configurations", {})
     return JSONResponse(configs)
 
+@app.post("/api/configs/batch_delete")
+async def batch_delete_configs(request: Request):
+    config = load_config()
+    ui_json = load_ui_json()
+    data = await request.json()
+    names = data.get("names", [])
+    
+    deleted_count = 0
+    for name in names:
+        if name in config["configurations"]:
+            del config["configurations"][name]
+            deleted_count += 1
+            
+    if deleted_count > 0:
+        save_config(config)
+        # Sync UI JSON
+        # Filter out deleted instances
+        ui_json["instances"] = [i for i in ui_json["instances"] if i["name"] not in names]
+        save_ui_json(ui_json)
+        
+    return {"success": True, "deleted": deleted_count}
+
 @app.post("/api/configs/{name}")
 async def update_config(name: str, request: Request):
     config = load_config()
